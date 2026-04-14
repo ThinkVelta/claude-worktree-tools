@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+
+# Copier
+*.rej
+
+# Data (local datasets, exports, uploads)
+data/
+*.csv
+*.dat
+*.pickle
+*.xls*
+*.sqlite*
+
+# dotenv — ignore all .env variants except the example template
+.env*
+!.env.example
+
+# IDE
+.idea/
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.py[cdo]
+*.egg-info/
+.venv/
+dist/
+
+# Ruff
+.ruff_cache/
+
+# Build artifacts
+build/
+.next/
+out/
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# Experiments
+scripts/output/
+
+# Agents
+.claude/
+.claude/worktrees

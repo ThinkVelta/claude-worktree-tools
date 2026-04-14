@@ -1,0 +1,26 @@
+# markdownlint configuration
+# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Allow long lines (skill templates have tables and code blocks)
+MD013: false
+
+# Allow duplicate headings (different files may reuse heading names)
+MD024: false
+
+# Allow inline HTML
+MD033: false
+
+# Allow bare URLs
+MD034: false
+
+# Relax blanks-around-fences (numbered list items with code blocks)
+MD031: false
+
+# Relax blanks-around-lists (bold items used as headers in lists)
+MD032: false
+
+# Allow code blocks without language specifier (example output blocks)
+MD040: false
+
+# Relax table column style (compact tables are fine)
+MD060: false

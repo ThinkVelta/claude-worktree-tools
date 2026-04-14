@@ -1,13 +1,9 @@
 ---
 name: wt-open
 description: Create or reopen a git worktree for parallel development. Use this whenever the user wants to work on something in parallel, start a new task without disrupting their current branch, spin up an isolated environment for an agent, or mentions worktrees, parallel branches, or "work on X separately". Also triggers for `/wt-open [branch | task description]`.
-metadata:
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-  argument-hint: "[branch-name | task description]"
+model: sonnet
+allowed-tools: Bash Read Glob Grep
+argument-hint: "[branch | task description] [--base <branch>]"
 ---
 
 # Worktree Open
@@ -30,7 +26,7 @@ Determine what the user wants from `$ARGUMENTS`:
 
 Generate a branch name following this convention:
 
-- Pattern: `<type>/<2-4-word-slug>`
+- Pattern: `<type>/<1-4-word-slug>`
 - Type: `feat`, `fix`, `refactor`, `chore`, `docs`, `ci`, `test` — infer from the description
 - Slug: lowercase, hyphen-separated, max 4 words, no special characters
 - Examples: `feat/auth-api-refactor`, `fix/login-timeout`, `chore/upgrade-deps`
@@ -41,7 +37,7 @@ Do not ask the user to confirm the branch name, just use it and proceed immediat
 
 If the user specified `--base <branch>` in their arguments, use that.
 
-Otherwise, default to the current branch. If the current branch looks like a feature branch and the user is creating a sub-feature, confirm whether they want to branch from `main` instead.
+Otherwise, default to the current branch. If the current branch looks like a feature branch and the user is creating a sub-feature, confirm whether they want to branch from `main` instead. Use multiple-choice for easy user selection.
 
 ## Step 3 — Check if this worktree already exists
 

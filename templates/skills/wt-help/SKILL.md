@@ -1,13 +1,9 @@
 ---
 name: wt-help
 description: Answer common questions about working with worktrees — VSCode integration, gitignore, port offsets, env files, workflow tips. Use this when the user asks how worktrees work, why something looks different in their editor, how to see diffs, or has any question about the worktree setup. Also triggers for `/wt-help [topic]`.
-metadata:
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-  argument-hint: "[topic]"
+model: haiku
+allowed-tools: Bash Read Glob Grep
+argument-hint: "[topic]"
 ---
 
 # Worktree Help
@@ -99,14 +95,15 @@ Two main scenarios:
 
 ### commands — "What commands are available?"
 
-| Command                                          | Purpose                              |
-| ------------------------------------------------ | ------------------------------------ |
-| `/wt-open [branch or description]`               | Create or reopen a worktree          |
-| `/wt-merge [branch] [--local] [--into <target>]` | Merge back via PR or locally         |
-| `/wt-close [branch] [--force] [--keep-branch]`   | Tear down a worktree                 |
-| `/wt-list [--stale]`                             | List worktrees with status           |
-| `/wt-adopt [--check-only]`                       | Configure setup script for your repo |
-| `/wt-help [topic]`                               | This help                            |
+| Command                                              | Purpose                                       |
+| ---------------------------------------------------- | --------------------------------------------- |
+| `/wt-open [branch or description] [--base <branch>]` | Create or reopen a worktree                   |
+| `/wt-merge <branch> --into <target> [--no-close]`    | Merge a branch into another branch            |
+| `/wt-close [branch] [--push] [--force]`              | Finish work — push, remove worktree, clean up |
+| `/wt-list [--stale]`                                 | List worktrees with status                    |
+| `/wt-cleanup [--dry-run]`                            | Batch cleanup of stale worktrees and branches |
+| `/wt-adopt [--check-only]`                           | Configure setup script for your repo          |
+| `/wt-help [topic]`                                   | This help                                     |
 
 ## Instructions
 

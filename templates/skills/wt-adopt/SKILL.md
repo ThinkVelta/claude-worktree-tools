@@ -1,15 +1,9 @@
 ---
 name: wt-adopt
 description: Analyze the repo stack, customize wt-setup.sh for worktree-aware development, and run a health check. Use this when the user just installed the worktree tools and needs to configure them, when they changed their stack and need to update the setup script, or when they want to check if their repo is worktree-friendly. Also triggers for `/wt-adopt [--check-only]`.
-metadata:
-  allowed_tools:
-    - Bash
-    - Read
-    - Write
-    - Edit
-    - Glob
-    - Grep
-  argument-hint: "[--check-only]"
+model: opus
+allowed-tools: Bash Read Write Edit Glob Grep
+argument-hint: "[--check-only]"
 ---
 
 # Worktree Adopt

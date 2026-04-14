@@ -1,18 +1,14 @@
 ---
 name: wt-close
-description: Tear down a git worktree cleanly with safety checks. Use this when the user is done with a worktree, wants to clean up, remove a branch's worktree, or mentions they no longer need a parallel environment. Also triggers for `/wt-close [branch] [--force] [--keep-branch]`.
-metadata:
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-  argument-hint: "[branch | path] [--force] [--keep-branch]"
+description: Finish work in a worktree — push, remove the worktree, and optionally delete the branch. Use this when the user is done with a worktree, wants to clean up, push and move on, or mentions they no longer need a parallel environment. Also triggers for `/wt-close [branch] [--push] [--force]`.
+model: sonnet
+allowed-tools: Bash Read Glob Grep
+argument-hint: "[branch | path] [--push] [--force]"
 ---
 
 # Worktree Close
 
-Safely tear down a git worktree: check for unsaved work, remove the worktree directory, decide about the branch, and clean up.
+Finish work in a worktree: check for unsaved work, optionally push, remove the worktree, and let the user decide what happens to the branch.
 
 **User input:** $ARGUMENTS
 
@@ -24,9 +20,7 @@ Safely tear down a git worktree: check for unsaved work, remove the worktree dir
 2. If the current directory is inside a worktree (not the main working tree), use the current worktree.
 3. If neither, list worktrees with `git worktree list` and ask the user to pick one.
 
-Parse `git worktree list --porcelain` to find the worktree path and branch. Identify the main working tree (the first entry).
-
-**Never close the main working tree.** If the user is trying to close the main working tree, explain that it cannot be removed as a worktree.
+Parse `git worktree list --porcelain` to find the worktree path and branch. Identify the main working tree (the first entry) — it cannot be closed.
 
 ## Step 2 — Check for uncommitted changes
 
@@ -52,64 +46,64 @@ Then present options:
 
 If `--force` was in `$ARGUMENTS`, skip this prompt and proceed with force removal.
 
-**Never silently discard uncommitted work.**
+## Step 3 — Push if requested
 
-## Step 3 — Check for unpushed commits
+If `--push` was in `$ARGUMENTS`, or the user mentioned pushing:
 
 ```bash
-git -C "<worktree-path>" log --oneline @{upstream}..HEAD 2>/dev/null
+git -C "<worktree-path>" push -u origin "<branch>"
 ```
 
-If there are unpushed commits (and no `--force` flag):
+If push fails, report the error and stop. If no `--push` flag, skip this step.
 
-> Warning: This branch has X unpushed commit(s). They will still exist on the local branch after worktree removal, but are not backed up to the remote.
+If there are unpushed commits and the user did NOT request `--push`, mention it:
 
-List the commits so the user can see what's at risk. Ask whether to continue.
+> This branch has X unpushed commit(s) that are not backed up to the remote. Add `--push` to push before closing, or continue to close without pushing.
 
-## Step 4 — Remove the worktree
+## Step 4 — Present cleanup options
 
-**If clean or user confirmed discard:**
+Ask the user what they'd like to do. Present these choices:
+
+1. **Remove worktree only** — removes the worktree directory but keeps the branch. Good when the work might continue later or a PR is still open.
+2. **Remove worktree + delete branch** — full cleanup. Good when the branch has been merged or is no longer needed. Uses `git branch -d` (safe delete — refuses if unmerged).
+3. **Keep everything** — cancel the close. The worktree and branch remain as-is.
+
+Pick a sensible default based on context:
+
+- Branch is merged into its target → default to option 2
+- Branch has an open PR → default to option 1
+- Branch has unmerged work → default to option 1
+
+If `--force` was specified, skip the prompt and use option 2 (but still use safe delete with `git branch -d`).
+
+## Step 5 — Execute the chosen action
+
+### Option 1: Remove worktree only
 
 ```bash
 git worktree remove "<worktree-path>"
 ```
 
-**If force removal was confirmed (dirty worktree):**
+If the worktree is dirty and the user confirmed discard:
 
 ```bash
 git worktree remove --force "<worktree-path>"
 ```
 
-If removal fails (e.g., a process is still using the directory), report the error. Suggest the user close any editors or terminals open in that directory.
-
-## Step 5 — Branch cleanup
-
-Unless `--keep-branch` was in `$ARGUMENTS`, decide whether to delete the branch.
-
-### Check merge status
+### Option 2: Remove worktree + delete branch
 
 ```bash
-git branch --merged main | grep -w "<branch>"
+git worktree remove "<worktree-path>"
+git branch -d "<branch>"
 ```
 
-### Check for open PRs
+If `git branch -d` fails (branch not fully merged), tell the user:
 
-```bash
-gh pr list --head "<branch>" --state open --json number,url 2>/dev/null
-```
+> Branch '<branch>' has unmerged commits. Keeping the branch. To force-delete: `git branch -D <branch>`
 
-(Skip this check if `gh` is not available.)
+### Option 3: Keep everything
 
-### Decision logic
-
-| Scenario                           | Default action                                                                                          |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Branch is merged into main         | Suggest delete. Confirm with user, then run `git branch -d "<branch>"`                                  |
-| Branch has an open PR              | Keep the branch. Inform: "Branch has an open PR — keeping it."                                          |
-| Branch is NOT merged and no PR     | Keep the branch. Inform: "Branch is not fully merged — keeping it. To delete: `git branch -D <branch>`" |
-| `--keep-branch` flag was specified | Keep the branch regardless.                                                                             |
-
-**Never run `git branch -D` automatically.** Only use `git branch -d` (safe delete). If the user wants to force-delete an unmerged branch, tell them the command to run manually.
+Do nothing. Confirm to the user that the worktree is still active.
 
 ## Step 6 — Prune and confirm
 
@@ -123,7 +117,7 @@ Print a summary:
 Worktree closed.
 
   Path:    <worktree-path> (removed)
-  Branch:  <branch> (deleted | kept)
+  Branch:  <branch> (deleted | kept | pushed)
 ```
 
 ## Guiding principles

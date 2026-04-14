@@ -1,22 +1,18 @@
 ---
 name: wt-merge
-description: Merge a worktree branch back via PR (default) or local merge, then clean up. Use this when the user is done working in a worktree and wants to merge, open a PR, bring changes back, combine branches, or batch several small fixes into one PR. Also triggers for `/wt-merge [branch] [--local] [--into <target>]`.
-metadata:
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-  argument-hint: "[branch] [--local] [--into <target>] [--no-close]"
+description: Merge a worktree's branch into another branch using git merge. Use this when the user wants to combine a worktree branch into a parent branch, batch small fixes into one branch, or fold sub-feature branches back together. This is always a real git merge — for pushing to remote, use `/wt-close --push` instead. Also triggers for `/wt-merge [branch] --into <target> [--no-close]`.
+model: sonnet
+allowed-tools: Bash Read Glob Grep
+argument-hint: "<branch> --into <target> [--no-close]"
 ---
 
 # Worktree Merge
 
-Merge a worktree's branch back into the target. Default: push and create a PR via GitHub CLI. Alternative: local merge for batching work.
+Merge a worktree's branch into a target branch. This is always a real `git merge` — the target is a local branch where the worktree's commits get folded in.
 
 **User input:** $ARGUMENTS
 
-## Step 1 — Determine which worktree to merge
+## Step 1 — Determine the source branch
 
 **If currently inside a worktree** (not the main working tree):
 
@@ -32,107 +28,54 @@ Merge a worktree's branch back into the target. Default: push and create a PR vi
 
 Record the worktree path and branch name for subsequent steps.
 
-## Step 2 — Pre-flight checks
+## Step 2 — Determine the target branch
 
-### 2a — Clean working tree
+The target is where the source branch's commits will be merged into.
 
-```bash
-git -C "<worktree-path>" status --porcelain
-```
+**If `--into <target>` is in the arguments:** use that branch.
 
-If there are uncommitted changes, **stop** and tell the user:
+**If no target is specified:** ask the user which branch to merge into. Common choices:
 
-> This worktree has uncommitted changes. Please commit them first (e.g., run `/commit` in the worktree) or discard them, then re-run `/wt-merge`.
+- `main` — the default branch
+- A parent feature branch (e.g., `feat/auth` when merging `feat/auth-nav`)
 
-List the dirty files so they can see what's pending.
-
-### 2b — Commits to merge
-
-```bash
-git -C "<worktree-path>" log --oneline main..<branch>
-```
-
-If there are no commits ahead of the target, **stop**:
-
-> Branch `<branch>` has no new commits relative to `main`. Nothing to merge.
-
-### 2c — Remote tracking
-
-```bash
-git -C "<worktree-path>" rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null
-```
-
-Note whether the branch already has an upstream remote. This determines if we need to push.
-
-## Step 3 — Choose merge strategy
-
-Parse `$ARGUMENTS` for strategy flags:
-
-| Flag in arguments        | Strategy                                                         |
-| ------------------------ | ---------------------------------------------------------------- |
-| (no flags, default)      | **PR flow** — push and open a PR on GitHub                       |
-| `--local`                | **Local merge** into `main` (or current branch of main worktree) |
-| `--into <target-branch>` | **Local merge** into the specified branch                        |
-
----
-
-### Strategy A — PR flow (default)
-
-#### Push the branch
-
-```bash
-git -C "<worktree-path>" push -u origin "<branch>"
-```
-
-If push fails, report the error and stop.
-
-#### Create the PR
-
-First, gather the commit log for the PR body:
-
-```bash
-git -C "<worktree-path>" log --oneline main..<branch>
-```
-
-Then create the PR:
-
-```bash
-gh pr create --base main --head "<branch>" --title "<pr-title>" --body "<pr-body>"
-```
-
-- Derive the PR title from the branch name using Conventional Commits style (e.g., `feat/auth-refactor` becomes `feat: auth refactor`).
-- The PR body should summarize the commits.
-
-If `gh` is not installed or not authenticated, fall back to:
-
-> Branch pushed. Create a PR manually at: `https://github.com/<owner>/<repo>/compare/<branch>`
-
-#### Chain to close
-
-Print the PR URL. Then proceed to **Step 4** (worktree cleanup) unless `--no-close` was in the arguments.
-
----
-
-### Strategy B — Local merge
-
-#### Identify the merge target
-
-- If `--into <target>` was specified, use that branch.
-- If `--local` was specified without a target, merge into `main`.
-
-Find the worktree where the target branch is checked out:
+The target branch must be checked out somewhere — either in the main working tree or in another worktree. Find it:
 
 ```bash
 git worktree list --porcelain
 ```
 
-If the target branch is in the main working tree, use that path. If it's in another worktree, use that worktree's path.
+If the target branch isn't checked out anywhere, check it out in the main working tree first.
 
-#### Perform the merge
+## Step 3 — Pre-flight checks
+
+### Clean working tree
 
 ```bash
-git -C "<target-worktree-path>" merge "<branch>" --no-ff
+git -C "<source-worktree-path>" status --porcelain
 ```
+
+If there are uncommitted changes, **stop** and tell the user:
+
+> This worktree has uncommitted changes. Please commit them first (e.g., run `/commit`), then re-run `/wt-merge`.
+
+### Commits to merge
+
+```bash
+git -C "<source-worktree-path>" log --oneline <target>..<source-branch>
+```
+
+If there are no commits ahead of the target, **stop**:
+
+> Branch `<source>` has no new commits relative to `<target>`. Nothing to merge.
+
+## Step 4 — Perform the merge
+
+```bash
+git -C "<target-worktree-path>" merge "<source-branch>" --no-ff
+```
+
+The `--no-ff` flag preserves the branch history as a merge commit, which makes the history easier to read and revert if needed.
 
 **If merge conflicts occur:**
 
@@ -141,46 +84,67 @@ git -C "<target-worktree-path>" merge "<branch>" --no-ff
    git -C "<target-worktree-path>" diff --name-only --diff-filter=U
    ```
 2. Report the conflicts clearly to the user.
-3. **Stop.** Do NOT attempt to auto-resolve. Tell the user to resolve conflicts in the target worktree, then re-run `/wt-close` manually.
+3. **Stop.** Merge conflicts need human judgment — auto-resolving risks silently introducing bugs. Tell the user to resolve conflicts in the target worktree, then run `/wt-close` on the source worktree when ready.
 
-On success, proceed to **Step 4**.
+**On success**, print:
 
-**When to use local merge:** Two key scenarios:
+```
+Merged '<source-branch>' into '<target-branch>'.
+```
 
-- **Batching small fixes:** Several small worktree branches (typo, dep bump, color tweak) merged locally into one branch before opening a single PR.
-- **Branch decomposition:** Sub-branches (`feat/auth-nav`, `feat/auth-table`) merged back into a parent branch (`feat/auth`), with one PR from the parent at the end.
+## Step 5 — Cleanup (unless --no-close)
 
-## Step 4 — Clean up the worktree (unless --no-close)
+If `--no-close` was in the arguments, skip this step and just print the result. The user may want to keep the source worktree around for further work.
 
-If `--no-close` was in the arguments, skip this step and just print the result.
+Otherwise, present the same cleanup options as `/wt-close`:
 
-Otherwise, perform the same cleanup as `/wt-close`:
+1. **Remove worktree only** — keeps the branch around in case it's needed
+2. **Remove worktree + delete branch** — full cleanup, since the commits now live in the target branch
+3. **Keep everything** — do nothing
 
-1. Remove the worktree:
+After a successful merge, default to option 2 — the branch's commits are now in the target, so the source branch has served its purpose.
 
-   ```bash
-   git worktree remove "<worktree-path>"
-   ```
+Execute the chosen option:
 
-2. Delete the branch (safe delete only):
+```bash
+# Option 1 or 2: remove the worktree
+git worktree remove "<source-worktree-path>"
 
-   ```bash
-   git branch -d "<branch>"
-   ```
+# Option 2 only: also delete the branch (safe delete)
+git branch -d "<source-branch>"
+```
 
-   If this fails (branch not fully merged), keep the branch and inform the user.
+Then prune:
 
-3. Prune stale references:
-   ```bash
-   git worktree prune
-   ```
+```bash
+git worktree prune
+```
 
 Print a summary of what was done.
 
+## When to use this
+
+**Batching small fixes:** Several small worktree branches (typo, dep bump, color tweak) merged locally into one branch before opening a single PR:
+
+```
+/wt-merge fix/typo --into feat/cleanup
+/wt-merge fix/deps --into feat/cleanup
+/wt-merge fix/color --into feat/cleanup
+# Then open one PR from feat/cleanup
+```
+
+**Branch decomposition:** Sub-branches merged back into a parent feature branch:
+
+```
+/wt-merge feat/auth-nav --into feat/auth
+/wt-merge feat/auth-table --into feat/auth
+# Then open one PR from feat/auth
+```
+
 ## Guiding principles
 
-**Protect the user's work.** Force-pushing can overwrite teammates' commits, and `git branch -D` can delete unmerged work without warning. Stick to safe operations (`git push`, `git branch -d`) — if a safe delete fails, that's git telling you the branch has unmerged commits, which is useful information to surface rather than override.
+**This skill does one thing: git merge.** For pushing to remote, use `/wt-close --push`. For opening PRs, use the user's own PR workflow. Keeping these concerns separate avoids conflicts with existing conventions.
 
-**Merge conflicts need human judgment.** Auto-resolving conflicts risks silently introducing bugs. When conflicts occur, clearly list the affected files and let the user decide how to resolve them.
+**Merge conflicts need human judgment.** When conflicts occur, clearly list the affected files and let the user decide. Attempting to auto-resolve risks silently introducing bugs.
 
-**Degrade gracefully.** If `gh` isn't installed, the user can still push and create a PR manually — give them the URL. Default to the PR flow since that's the common case; local merge is a power-user feature for batching and branch decomposition.
+**Use `git branch -d` (safe delete), not `-D`.** If the safe delete fails after a merge, something unexpected happened — surface it rather than force through.

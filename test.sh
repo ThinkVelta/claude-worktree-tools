@@ -74,6 +74,8 @@ if git -C "$TARGET_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   mkdir -p "$TARGET_DIR"
   git -C "$TARGET_DIR" init --quiet -b main
+  git -C "$TARGET_DIR" config user.name "claude-worktree-tools test"
+  git -C "$TARGET_DIR" config user.email "test@example.invalid"
   git -C "$TARGET_DIR" commit --allow-empty -m "initial commit" --quiet
   echo "  Created test repo at $TARGET_DIR"
 fi
@@ -145,6 +147,8 @@ section "Test 4 — --dry-run flag"
 DRY_RUN_DIR="${TARGET_DIR}/.test-dryrun"
 mkdir -p "$DRY_RUN_DIR"
 git -C "$DRY_RUN_DIR" init --quiet -b main
+git -C "$DRY_RUN_DIR" config user.name "claude-worktree-tools test"
+git -C "$DRY_RUN_DIR" config user.email "test@example.invalid"
 git -C "$DRY_RUN_DIR" commit --allow-empty -m "initial commit" --quiet
 
 OUTPUT=$( (cd "$DRY_RUN_DIR" && node "$INIT_JS" --dry-run) 2>&1 )
@@ -166,6 +170,8 @@ section "Test 5 — --scripts-dir flag"
 CUSTOM_DIR="${TARGET_DIR}/.test-customdir"
 mkdir -p "$CUSTOM_DIR"
 git -C "$CUSTOM_DIR" init --quiet -b main
+git -C "$CUSTOM_DIR" config user.name "claude-worktree-tools test"
+git -C "$CUSTOM_DIR" config user.email "test@example.invalid"
 git -C "$CUSTOM_DIR" commit --allow-empty -m "initial commit" --quiet
 
 (cd "$CUSTOM_DIR" && node "$INIT_JS" --scripts-dir "tools")

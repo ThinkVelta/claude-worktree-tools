@@ -1,6 +1,6 @@
 ---
 name: wt-list
-description: List active worktrees with branch, status, sync state, and staleness info. Invoke with `/wt-list`.
+description: List active worktrees with branch, status, sync state, and staleness info. Use this when the user asks what worktrees exist, wants to see what's in flight, check which branches have worktrees, or asks about stale or forgotten parallel work. Also triggers for `/wt-list [--stale]`.
 metadata:
   allowed_tools:
     - Bash
@@ -112,8 +112,6 @@ After the listing, add actionable suggestions for any issues found:
 - **Behind remote:** "Worktree `<branch>` is behind its remote. Consider pulling."
 - **Port offset collisions:** If two worktrees share the same port offset, warn about potential port conflicts.
 
-## Important rules
+## Guiding principles
 
-- **This command is read-only.** Never modify any worktree, branch, or file.
-- If a worktree path no longer exists on disk, note it as "missing" and suggest running `git worktree prune`.
-- Handle errors gracefully — if a worktree is in a broken state, report what you can and skip what you cannot.
+This is a **read-only** command — it reports state but never changes it. The user is asking "what do I have?" not "fix things for me." If a worktree is in a broken state (missing on disk, detached HEAD, etc.), report what you can and skip what you can't rather than erroring out. Suggest `git worktree prune` for missing directories so the user can clean up on their own terms.

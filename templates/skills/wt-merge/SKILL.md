@@ -1,6 +1,6 @@
 ---
 name: wt-merge
-description: Merge a worktree branch back via PR (default) or local merge, then clean up. Invoke with `/wt-merge [branch] [--local] [--into <target>]`.
+description: Merge a worktree branch back via PR (default) or local merge, then clean up. Use this when the user is done working in a worktree and wants to merge, open a PR, bring changes back, combine branches, or batch several small fixes into one PR. Also triggers for `/wt-merge [branch] [--local] [--into <target>]`.
 metadata:
   allowed_tools:
     - Bash
@@ -177,10 +177,10 @@ Otherwise, perform the same cleanup as `/wt-close`:
 
 Print a summary of what was done.
 
-## Important rules
+## Guiding principles
 
-- **Never force-push.**
-- **Never use `git branch -D`** (force delete). Only `git branch -d` (safe delete).
-- **Never auto-resolve merge conflicts.** Always stop and let the user handle them.
-- If `gh` CLI is not available, degrade gracefully: push the branch and print a manual PR URL.
-- Default to PR flow. Local merge is for users who explicitly request it.
+**Protect the user's work.** Force-pushing can overwrite teammates' commits, and `git branch -D` can delete unmerged work without warning. Stick to safe operations (`git push`, `git branch -d`) — if a safe delete fails, that's git telling you the branch has unmerged commits, which is useful information to surface rather than override.
+
+**Merge conflicts need human judgment.** Auto-resolving conflicts risks silently introducing bugs. When conflicts occur, clearly list the affected files and let the user decide how to resolve them.
+
+**Degrade gracefully.** If `gh` isn't installed, the user can still push and create a PR manually — give them the URL. Default to the PR flow since that's the common case; local merge is a power-user feature for batching and branch decomposition.

@@ -1,6 +1,6 @@
 ---
 name: wt-close
-description: Tear down a git worktree cleanly with safety checks. Invoke with `/wt-close [branch] [--force] [--keep-branch]`.
+description: Tear down a git worktree cleanly with safety checks. Use this when the user is done with a worktree, wants to clean up, remove a branch's worktree, or mentions they no longer need a parallel environment. Also triggers for `/wt-close [branch] [--force] [--keep-branch]`.
 metadata:
   allowed_tools:
     - Bash
@@ -126,10 +126,12 @@ Worktree closed.
   Branch:  <branch> (deleted | kept)
 ```
 
-## Important rules
+## Guiding principles
 
-- **Never close the main working tree.**
-- **Never silently discard uncommitted changes** without `--force` or explicit user confirmation.
-- **Never use `git branch -D`** (force delete). Only `git branch -d`.
-- **Never use `rm -rf`** on the worktree directory. Always use `git worktree remove`.
-- If anything fails, run `git worktree prune` to clean up stale references.
+**The main working tree is not a worktree.** It's the user's primary repo checkout — removing it would be catastrophic. If someone accidentally targets it, explain the difference.
+
+**Uncommitted work is sacred.** Silently discarding changes is one of the worst things a tool can do. The user should always see what's at risk and explicitly choose to discard. The `--force` flag exists for when they've already made that choice.
+
+**Use `git branch -d` (safe delete), not `-D`.** If `-d` refuses, it means the branch has unmerged commits — that's valuable information to surface, not override. Tell the user the command to force-delete if they really want to.
+
+**Use `git worktree remove`, not `rm -rf`.** Git tracks worktree metadata internally; removing the directory without telling git leaves stale references that cause confusing errors later. If anything goes wrong, `git worktree prune` cleans up the metadata.

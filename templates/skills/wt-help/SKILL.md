@@ -1,6 +1,6 @@
 ---
 name: wt-help
-description: Answer common questions about working with worktrees. Invoke with `/wt-help [topic]`.
+description: Answer common questions about working with worktrees — VSCode integration, gitignore, port offsets, env files, workflow tips. Use this when the user asks how worktrees work, why something looks different in their editor, how to see diffs, or has any question about the worktree setup. Also triggers for `/wt-help [topic]`.
 metadata:
   allowed_tools:
     - Bash

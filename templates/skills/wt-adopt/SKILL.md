@@ -1,6 +1,6 @@
 ---
 name: wt-adopt
-description: Analyze the repo stack, customize wt-setup.sh, and run a health check. Invoke with `/wt-adopt`.
+description: Analyze the repo stack, customize wt-setup.sh for worktree-aware development, and run a health check. Use this when the user just installed the worktree tools and needs to configure them, when they changed their stack and need to update the setup script, or when they want to check if their repo is worktree-friendly. Also triggers for `/wt-adopt [--check-only]`.
 metadata:
   allowed_tools:
     - Bash
@@ -201,9 +201,10 @@ Checks:       X passed, Y warnings
 Suggestions:  Z actionable items
 ```
 
-## Important rules
+## Guiding principles
 
-- **Only write to:** `scripts/wt-setup.sh` and `.gitignore`. Never modify source code, Dockerfiles, or any other project files.
-- **Always show proposed changes** before writing them.
-- **Idempotent:** Safe to re-run. Overwrites repo-specific sections, preserves user-defined sections.
-- If `--check-only`, do NOT write any files — only analyze and report.
+**Minimal footprint.** This skill only writes to `scripts/wt-setup.sh` and `.gitignore`. It analyzes Dockerfiles, source code, and config files but never modifies them — those are the user's domain. The health check _suggests_ changes to those files, but the user decides whether and how to apply them.
+
+**Show before writing.** The user should see what you plan to change in `wt-setup.sh` before you write it. They may have context about their stack that the analysis missed.
+
+**Safe to re-run.** The repo-specific sections get overwritten each time (that's the point — pick up stack changes), but the user-defined extra setup section is always preserved. This makes `/wt-adopt` a safe "refresh" command after stack changes.

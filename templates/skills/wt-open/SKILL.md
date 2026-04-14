@@ -1,6 +1,6 @@
 ---
 name: wt-open
-description: Create or reopen a git worktree for parallel development. Invoke with `/wt-open [branch | task description]`.
+description: Create or reopen a git worktree for parallel development. Use this whenever the user wants to work on something in parallel, start a new task without disrupting their current branch, spin up an isolated environment for an agent, or mentions worktrees, parallel branches, or "work on X separately". Also triggers for `/wt-open [branch | task description]`.
 metadata:
   allowed_tools:
     - Bash
@@ -112,9 +112,10 @@ To start working in this worktree:
   cd <worktree-path> && claude
 ```
 
-## Important rules
+## Design principles
 
-- **Deterministic:** The same branch name always produces the same worktree path and ports.
-- **Idempotent:** Running this command twice with the same branch reopens the existing worktree.
-- **Never create a worktree if the branch is already checked out elsewhere.** The setup script handles this check, but if it fails, report the error clearly.
-- If the setup script fails at any step, report what happened. Do not attempt cleanup — the user or `/wt-close` can handle it.
+This skill is **deterministic** — the same branch name always produces the same worktree path and ports, so the user can bookmark URLs and expect consistency. It's also **idempotent** — running it twice with the same branch reopens rather than duplicates, which means the user never has to worry about accidentally creating a mess.
+
+Git only allows a branch to be checked out in one worktree at a time, so the setup script will refuse if the branch is already in use elsewhere. If that happens, surface the error clearly so the user knows which worktree has it.
+
+If the setup script fails partway through, just report what happened. Don't try to auto-clean — partial state is easier for the user to inspect and fix (via `/wt-close`) than state that was silently deleted.

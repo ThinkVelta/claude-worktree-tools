@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INIT_JS="${SCRIPT_DIR}/bin/init.js"
-TARGET_DIR="${1:-/tmp/cwt-test-repo-$$}"
+TARGET_DIR="${1:-${SCRIPT_DIR}/tmp/test-repo-$$}"
 PASS=0
 FAIL=0
 
@@ -64,20 +64,19 @@ section() {
 }
 
 # ---------------------------------------------------------------------------
-# Setup: create a fresh git repo
+# Setup: ensure a git repo exists at the target
 # ---------------------------------------------------------------------------
 
 section "Setup"
 
-if [[ -d "$TARGET_DIR" ]]; then
-  echo "  Removing existing $TARGET_DIR"
-  rm -rf "$TARGET_DIR"
+if git -C "$TARGET_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "  Using existing git repo at $TARGET_DIR"
+else
+  mkdir -p "$TARGET_DIR"
+  git -C "$TARGET_DIR" init --quiet
+  git -C "$TARGET_DIR" commit --allow-empty -m "initial commit" --quiet
+  echo "  Created test repo at $TARGET_DIR"
 fi
-
-mkdir -p "$TARGET_DIR"
-git -C "$TARGET_DIR" init --quiet
-git -C "$TARGET_DIR" commit --allow-empty -m "initial commit" --quiet
-echo "  Created test repo at $TARGET_DIR"
 
 # ---------------------------------------------------------------------------
 # Test 1: Basic install
@@ -85,7 +84,7 @@ echo "  Created test repo at $TARGET_DIR"
 
 section "Test 1 — Basic install"
 
-(cd "$TARGET_DIR" && node "$INIT_JS")
+(cd "$TARGET_DIR" && node "$INIT_JS" --force)
 
 check "scripts/wt-setup.sh exists" test -f "$TARGET_DIR/scripts/wt-setup.sh"
 check "scripts/wt-setup.sh is executable" test -x "$TARGET_DIR/scripts/wt-setup.sh"
@@ -94,6 +93,7 @@ check "wt-merge skill exists" test -f "$TARGET_DIR/.claude/skills/wt-merge/SKILL
 check "wt-close skill exists" test -f "$TARGET_DIR/.claude/skills/wt-close/SKILL.md"
 check "wt-list skill exists" test -f "$TARGET_DIR/.claude/skills/wt-list/SKILL.md"
 check "wt-adopt skill exists" test -f "$TARGET_DIR/.claude/skills/wt-adopt/SKILL.md"
+check "wt-help skill exists" test -f "$TARGET_DIR/.claude/skills/wt-help/SKILL.md"
 check ".gitignore contains .claude/worktrees" grep -q '.claude/worktrees' "$TARGET_DIR/.gitignore"
 
 # Verify skill files have YAML frontmatter
@@ -140,8 +140,8 @@ fi
 
 section "Test 4 — --dry-run flag"
 
-# Create a fresh repo for dry-run test
-DRY_RUN_DIR="/tmp/cwt-dryrun-$$"
+# Use a subdirectory of the target for the dry-run test
+DRY_RUN_DIR="${TARGET_DIR}/.test-dryrun"
 mkdir -p "$DRY_RUN_DIR"
 git -C "$DRY_RUN_DIR" init --quiet
 git -C "$DRY_RUN_DIR" commit --allow-empty -m "initial commit" --quiet
@@ -156,15 +156,13 @@ fi
 
 check "--dry-run does not write files" test ! -f "$DRY_RUN_DIR/scripts/wt-setup.sh"
 
-rm -rf "$DRY_RUN_DIR"
-
 # ---------------------------------------------------------------------------
 # Test 5: --scripts-dir
 # ---------------------------------------------------------------------------
 
 section "Test 5 — --scripts-dir flag"
 
-CUSTOM_DIR="/tmp/cwt-customdir-$$"
+CUSTOM_DIR="${TARGET_DIR}/.test-customdir"
 mkdir -p "$CUSTOM_DIR"
 git -C "$CUSTOM_DIR" init --quiet
 git -C "$CUSTOM_DIR" commit --allow-empty -m "initial commit" --quiet
@@ -174,16 +172,14 @@ git -C "$CUSTOM_DIR" commit --allow-empty -m "initial commit" --quiet
 check "--scripts-dir writes to custom path" test -f "$CUSTOM_DIR/tools/wt-setup.sh"
 check "--scripts-dir does not write to default" test ! -f "$CUSTOM_DIR/scripts/wt-setup.sh"
 
-rm -rf "$CUSTOM_DIR"
-
 # ---------------------------------------------------------------------------
 # Test 6: Not a git repo
 # ---------------------------------------------------------------------------
 
 section "Test 6 — Not a git repo"
 
-NONGIT_DIR="/tmp/cwt-nongit-$$"
-mkdir -p "$NONGIT_DIR"
+# Use a truly non-git directory (not inside any git repo)
+NONGIT_DIR="$(mktemp -d)"
 
 OUTPUT=$( (cd "$NONGIT_DIR" && node "$INIT_JS") 2>&1 || true )
 
@@ -193,7 +189,7 @@ else
   fail "Should reject non-git directory"
 fi
 
-rm -rf "$NONGIT_DIR"
+rmdir "$NONGIT_DIR" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Test 7: wt-setup.sh basic syntax check
@@ -209,11 +205,15 @@ check "wt-setup.sh passes bash -n" bash -n "$TARGET_DIR/scripts/wt-setup.sh"
 
 section "Test 8 — wt-setup.sh creates a worktree"
 
-(cd "$TARGET_DIR" && bash scripts/wt-setup.sh test/feature-branch --base main) 2>&1 | while IFS= read -r line; do echo "  $line"; done
+# Use a unique branch name per run to avoid collisions when reusing the repo
+TEST_BRANCH="test/smoke-$$"
+TEST_BRANCH_DIR="test-smoke-$$"
 
-check "Worktree directory exists" test -d "$TARGET_DIR/.claude/worktrees/test-feature-branch"
-check "Worktree has .git file" test -f "$TARGET_DIR/.claude/worktrees/test-feature-branch/.git"
-check_eval "Branch was created" "git -C '$TARGET_DIR' branch --list 'test/feature-branch' | grep -q 'test/feature-branch'"
+(cd "$TARGET_DIR" && bash scripts/wt-setup.sh "$TEST_BRANCH" --base main) 2>&1 | while IFS= read -r line; do echo "  $line"; done
+
+check "Worktree directory exists" test -d "$TARGET_DIR/.claude/worktrees/$TEST_BRANCH_DIR"
+check "Worktree has .git file" test -f "$TARGET_DIR/.claude/worktrees/$TEST_BRANCH_DIR/.git"
+check_eval "Branch was created" "git -C '$TARGET_DIR' branch --list '$TEST_BRANCH' | grep -q '$TEST_BRANCH'"
 
 # ---------------------------------------------------------------------------
 # Test 9: wt-setup.sh --reopen
@@ -221,10 +221,10 @@ check_eval "Branch was created" "git -C '$TARGET_DIR' branch --list 'test/featur
 
 section "Test 9 — wt-setup.sh --reopen"
 
-(cd "$TARGET_DIR" && bash scripts/wt-setup.sh test/feature-branch --reopen) 2>&1 | while IFS= read -r line; do echo "  $line"; done
+(cd "$TARGET_DIR" && bash scripts/wt-setup.sh "$TEST_BRANCH" --reopen) 2>&1 | while IFS= read -r line; do echo "  $line"; done
 
 check "Reopen succeeds without error" true
-check "Worktree still valid after reopen" test -f "$TARGET_DIR/.claude/worktrees/test-feature-branch/.git"
+check "Worktree still valid after reopen" test -f "$TARGET_DIR/.claude/worktrees/$TEST_BRANCH_DIR/.git"
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -239,8 +239,7 @@ fi
 echo ""
 echo "════════════════════════════════════════"
 echo ""
-echo "Test repo left at: $TARGET_DIR"
-echo "Clean up with: rm -rf $TARGET_DIR"
+echo "Test repo at: $TARGET_DIR"
 
 if [[ "$FAIL" -gt 0 ]]; then
   exit 1

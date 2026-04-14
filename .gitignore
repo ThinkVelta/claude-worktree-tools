@@ -45,6 +45,8 @@ coverage.xml
 # Experiments
 scripts/output/
 
-# Agents
-.claude/
+# Test artifacts
+tmp/
+
+# Worktrees
 .claude/worktrees

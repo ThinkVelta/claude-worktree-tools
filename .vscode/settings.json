@@ -6,27 +6,16 @@
   "files.insertFinalNewline": true,
   "files.autoSave": "onFocusChange",
 
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-      "source.fixAll.ruff": "explicit",
-      "source.organizeImports.ruff": "explicit"
-    }
-  },
-
-  "[typescript]": {
+  "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
 
-  "[typescriptreact]": {
+  "[markdown]": {
+    "editor.wordWrap": "on",
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
 
-  "python.terminal.activateEnvironment": false,
-  "python.venvFolders": ["${workspaceFolder}/backend", "${workspaceFolder}"],
-
-  "eslint.workingDirectories": ["frontend"],
-
-  "ruff.importStrategy": "fromEnvironment"
+  "[shellscript]": {
+    "editor.defaultFormatter": null
+  }
 }

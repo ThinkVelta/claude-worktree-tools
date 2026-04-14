@@ -18,7 +18,7 @@ lint-sh:  ## Check shell scripts with shellcheck and bash -n
 # ---------------------------------------------------------------------------
 
 test:  ## Run the smoke test suite
-	bash test.sh /tmp/cwt-test-make
+	bash test.sh tmp/test-make
 
 # ---------------------------------------------------------------------------
 # CI (lint + test)
@@ -31,7 +31,7 @@ ci: lint test  ## Run lint and tests (used in CI)
 # ---------------------------------------------------------------------------
 
 clean:  ## Remove test artifacts
-	@echo "Remove /tmp/cwt-test-make manually if needed"
+	@echo "Remove tmp/ manually if needed"
 
 # ---------------------------------------------------------------------------
 # Help

@@ -19,12 +19,15 @@ Merge a worktree's branch back into the target. Default: push and create a PR vi
 ## Step 1 — Determine which worktree to merge
 
 **If currently inside a worktree** (not the main working tree):
+
 - Use the current worktree's branch.
 
 **If `$ARGUMENTS` specifies a branch name or worktree path:**
+
 - Use that. Verify it has an associated worktree via `git worktree list --porcelain`.
 
 **If neither:**
+
 - List all worktrees with `git worktree list` and ask the user which one to merge.
 
 Record the worktree path and branch name for subsequent steps.
@@ -38,6 +41,7 @@ git -C "<worktree-path>" status --porcelain
 ```
 
 If there are uncommitted changes, **stop** and tell the user:
+
 > This worktree has uncommitted changes. Please commit them first (e.g., run `/commit` in the worktree) or discard them, then re-run `/wt-merge`.
 
 List the dirty files so they can see what's pending.
@@ -49,6 +53,7 @@ git -C "<worktree-path>" log --oneline main..<branch>
 ```
 
 If there are no commits ahead of the target, **stop**:
+
 > Branch `<branch>` has no new commits relative to `main`. Nothing to merge.
 
 ### 2c — Remote tracking
@@ -63,11 +68,11 @@ Note whether the branch already has an upstream remote. This determines if we ne
 
 Parse `$ARGUMENTS` for strategy flags:
 
-| Flag in arguments | Strategy |
-|---|---|
-| (no flags, default) | **PR flow** — push and open a PR on GitHub |
-| `--local` | **Local merge** into `main` (or current branch of main worktree) |
-| `--into <target-branch>` | **Local merge** into the specified branch |
+| Flag in arguments        | Strategy                                                         |
+| ------------------------ | ---------------------------------------------------------------- |
+| (no flags, default)      | **PR flow** — push and open a PR on GitHub                       |
+| `--local`                | **Local merge** into `main` (or current branch of main worktree) |
+| `--into <target-branch>` | **Local merge** into the specified branch                        |
 
 ---
 
@@ -99,6 +104,7 @@ gh pr create --base main --head "<branch>" --title "<pr-title>" --body "<pr-body
 - The PR body should summarize the commits.
 
 If `gh` is not installed or not authenticated, fall back to:
+
 > Branch pushed. Create a PR manually at: `https://github.com/<owner>/<repo>/compare/<branch>`
 
 #### Chain to close
@@ -129,6 +135,7 @@ git -C "<target-worktree-path>" merge "<branch>" --no-ff
 ```
 
 **If merge conflicts occur:**
+
 1. List the conflicting files:
    ```bash
    git -C "<target-worktree-path>" diff --name-only --diff-filter=U
@@ -139,6 +146,7 @@ git -C "<target-worktree-path>" merge "<branch>" --no-ff
 On success, proceed to **Step 4**.
 
 **When to use local merge:** Two key scenarios:
+
 - **Batching small fixes:** Several small worktree branches (typo, dep bump, color tweak) merged locally into one branch before opening a single PR.
 - **Branch decomposition:** Sub-branches (`feat/auth-nav`, `feat/auth-table`) merged back into a parent branch (`feat/auth`), with one PR from the parent at the end.
 
@@ -149,14 +157,17 @@ If `--no-close` was in the arguments, skip this step and just print the result.
 Otherwise, perform the same cleanup as `/wt-close`:
 
 1. Remove the worktree:
+
    ```bash
    git worktree remove "<worktree-path>"
    ```
 
 2. Delete the branch (safe delete only):
+
    ```bash
    git branch -d "<branch>"
    ```
+
    If this fails (branch not fully merged), keep the branch and inform the user.
 
 3. Prune stale references:

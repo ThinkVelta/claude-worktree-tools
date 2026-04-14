@@ -45,6 +45,7 @@ git -C "<worktree-path>" status --short
 ```
 
 Then present options:
+
 1. **Commit first** (recommended) — suggest running `/commit` in the worktree, then re-run `/wt-close`
 2. **Discard changes** — proceed with force removal (requires explicit confirmation)
 3. **Abort** — cancel the close operation
@@ -101,12 +102,12 @@ gh pr list --head "<branch>" --state open --json number,url 2>/dev/null
 
 ### Decision logic
 
-| Scenario | Default action |
-|---|---|
-| Branch is merged into main | Suggest delete. Confirm with user, then run `git branch -d "<branch>"` |
-| Branch has an open PR | Keep the branch. Inform: "Branch has an open PR — keeping it." |
-| Branch is NOT merged and no PR | Keep the branch. Inform: "Branch is not fully merged — keeping it. To delete: `git branch -D <branch>`" |
-| `--keep-branch` flag was specified | Keep the branch regardless. |
+| Scenario                           | Default action                                                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Branch is merged into main         | Suggest delete. Confirm with user, then run `git branch -d "<branch>"`                                  |
+| Branch has an open PR              | Keep the branch. Inform: "Branch has an open PR — keeping it."                                          |
+| Branch is NOT merged and no PR     | Keep the branch. Inform: "Branch is not fully merged — keeping it. To delete: `git branch -D <branch>`" |
+| `--keep-branch` flag was specified | Keep the branch regardless.                                                                             |
 
 **Never run `git branch -D` automatically.** Only use `git branch -d` (safe delete). If the user wants to force-delete an unmerged branch, tell them the command to run manually.
 

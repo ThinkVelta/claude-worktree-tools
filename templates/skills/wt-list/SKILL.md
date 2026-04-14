@@ -23,6 +23,7 @@ git worktree list --porcelain
 ```
 
 Parse the output to extract for each worktree:
+
 - **Path** (`worktree <path>`)
 - **HEAD commit** (`HEAD <sha>`)
 - **Branch** (`branch refs/heads/<name>`) or `(detached HEAD)`
@@ -30,6 +31,7 @@ Parse the output to extract for each worktree:
 Identify the main working tree (first entry) and label it as such.
 
 If there are no worktrees beyond the main working tree, report:
+
 > No additional worktrees found. Use `/wt-open` to create one.
 
 Then stop.

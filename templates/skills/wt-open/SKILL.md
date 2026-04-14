@@ -20,21 +20,22 @@ Create or reopen a git worktree for parallel development, then guide the user to
 
 Determine what the user wants from `$ARGUMENTS`:
 
-| Input pattern | Action |
-|---|---|
-| Empty (no arguments) | Ask the user what they want to work on |
-| Looks like a branch name (contains `/`, or starts with `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`, `ci/`, `test/`) | Use as the branch name directly |
-| Natural language (a task description like "add auth to the API") | Derive a branch name (see below) |
+| Input pattern                                                                                                           | Action                                 |
+| ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Empty (no arguments)                                                                                                    | Ask the user what they want to work on |
+| Looks like a branch name (contains `/`, or starts with `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`, `ci/`, `test/`) | Use as the branch name directly        |
+| Natural language (a task description like "add auth to the API")                                                        | Derive a branch name (see below)       |
 
 ### Deriving a branch name from a task description
 
 Generate a branch name following this convention:
+
 - Pattern: `<type>/<2-4-word-slug>`
 - Type: `feat`, `fix`, `refactor`, `chore`, `docs`, `ci`, `test` — infer from the description
 - Slug: lowercase, hyphen-separated, max 4 words, no special characters
 - Examples: `feat/auth-api-refactor`, `fix/login-timeout`, `chore/upgrade-deps`
 
-**Confirm the derived branch name with the user before proceeding.**
+Do not ask the user to confirm the branch name, just use it and proceed immediately.
 
 ## Step 2 — Determine base branch
 
@@ -59,12 +60,15 @@ WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}"
 ```
 
 **If the worktree directory exists and is valid** (has a `.git` file):
+
 - This is a **reopen**. Run setup with `--reopen` flag (Step 4).
 
 **If the branch exists but has no worktree**:
+
 - Create a new worktree for the existing branch (Step 4).
 
 **If neither exists**:
+
 - Create both the branch and worktree (Step 4).
 
 ## Step 4 — Run the setup script
@@ -76,16 +80,19 @@ test -f "$(git rev-parse --show-toplevel)/scripts/wt-setup.sh"
 ```
 
 If it does NOT exist, tell the user:
+
 > Setup script not found at `scripts/wt-setup.sh`. Run `/wt-adopt` first to generate it, or install the toolkit with `npx @thinkvelta/claude-worktree-tools`.
 
 If it exists, run it:
 
 **New worktree:**
+
 ```bash
 bash "$(git rev-parse --show-toplevel)/scripts/wt-setup.sh" "<branch-name>" --base "<base-branch>"
 ```
 
 **Reopen existing worktree:**
+
 ```bash
 bash "$(git rev-parse --show-toplevel)/scripts/wt-setup.sh" "<branch-name>" --reopen
 ```

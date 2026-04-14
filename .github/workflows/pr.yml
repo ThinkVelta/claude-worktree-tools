@@ -1,0 +1,128 @@
+name: PR Reviewer
+run-name: "PR Reviewer - #${{ github.event.pull_request.number }}"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  codex:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      final_message: ${{ steps.run_codex.outputs['final-message'] }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Pre-fetch base and head refs for the PR
+        run: |
+          git fetch --no-tags origin \
+            ${{ github.event.pull_request.base.ref }} \
+            +refs/pull/${{ github.event.pull_request.number }}/head
+
+      - name: Fetch PR conversation
+        id: fetch_conversation
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          result-encoding: string
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const opts = { owner: context.repo.owner, repo: context.repo.repo };
+
+            const [issueComments, reviews, reviewComments] = await Promise.all([
+              github.paginate(github.rest.issues.listComments, { ...opts, issue_number: prNumber }),
+              github.paginate(github.rest.pulls.listReviews, { ...opts, pull_number: prNumber }),
+              github.paginate(github.rest.pulls.listReviewComments, { ...opts, pull_number: prNumber }),
+            ]);
+
+            const all = [
+              ...issueComments.map(c => ({ date: c.created_at, text: `@${c.user.login}: ${c.body}` })),
+              ...reviews.filter(r => r.body).map(r => ({ date: r.submitted_at, text: `@${r.user.login} (review ${r.state}): ${r.body}` })),
+              ...reviewComments.map(c => ({ date: c.created_at, text: `@${c.user.login} (on ${c.path}): ${c.body}` })),
+            ];
+
+            all.sort((a, b) => new Date(a.date) - new Date(b.date));
+            return all.map(e => e.text).join('\n---\n');
+
+      # - name: Show PR conversation
+      #   env:
+      #     CONVERSATION: ${{ steps.fetch_conversation.outputs.result }}
+      #   run: |
+      #     echo "--- PR conversation history ---"
+      #     printf '%s\n' "$CONVERSATION"
+
+      - name: Fail fast on missing OPENAI_API_KEY
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY is not set for this workflow run."
+            exit 1
+          fi
+
+      - name: Prepare Codex home
+        run: |
+          mkdir -p "$HOME/.codex"
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            This is PR #${{ github.event.pull_request.number }} for ${{ github.repository }}.
+            Base SHA: ${{ github.event.pull_request.base.sha }}
+            Head SHA: ${{ github.event.pull_request.head.sha }}
+
+            Review ONLY the changes introduced by the PR.
+            Suggest any improvements, potential bugs, or issues.
+            Be concise and specific in your feedback.
+            Write in markdown format, with a new title for each issue/topic you raise.
+            When generating tables, make sure they're formatted correctly and don't forget the header separator row.
+            Include code snippets where appropriate, in properly formatted code blocks.
+            Analyze the conversation history to understand the context of the PR and previous feedback given. Give your new feedback in relation to this, highlighing what has been fixed and what has been missed, as well as any new issues that have been introduced.
+
+            Format your feedback message as follows:
+              - A `## Feedback Summary` section with a table tracking ALL feedback ever raised across the PR's lifetime (columns: `Issue`, `Severity`, `Summary`, `Resolved`). Include every issue from previous reviews as well as new ones. Use ✅ for resolved issues and ❌ for unresolved ones. Sort by severity (highest first), then resolved status (unresolved first).
+              - A `## Open Issues` section containing only the unresolved issues. Each issue gets its own `###` subheading formatted as `### Issue title [severity]`. Within each subheading, structure the content with bold labels:
+                - **Issue:** A clear explanation of the problem, with code snippets in fenced code blocks where appropriate.
+                - **Proposed fix:** A concrete solution, including code snippets showing the recommended change.
+                - **Related files:** A list of file paths affected by this issue.
+
+            Pull request title and body:
+            ----
+            ${{ github.event.pull_request.title }}
+            ${{ github.event.pull_request.body }}
+
+            Current PR's conversation history:
+            ----
+            ${{ steps.fetch_conversation.outputs.result }}
+
+  post_feedback:
+    runs-on: ubuntu-latest
+    needs: codex
+    if: needs.codex.outputs.final_message != ''
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Report Codex feedback
+        uses: actions/github-script@v8
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: process.env.CODEX_FINAL_MESSAGE,
+            });

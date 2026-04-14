@@ -75,9 +75,12 @@ done
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
   || die "Not inside a git repository"
 
-# Convert slashes to hyphens for the directory name.
+# Convert slashes to hyphens for a human-readable prefix, then append a short
+# hash of the original branch name to prevent collisions between branches that
+# only differ in slash-vs-hyphen positions (e.g. feat/a-b vs feat/a/b).
 SAFE_BRANCH="$(printf '%s' "$BRANCH_NAME" | tr '/' '-')"
-WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}"
+BRANCH_HASH="$(printf '%s' "$BRANCH_NAME" | cksum | awk '{printf "%08x", $1}')"
+WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}-${BRANCH_HASH}"
 
 # Default base branch: main, then master, then current HEAD.
 if [[ -z "$BASE_BRANCH" ]]; then

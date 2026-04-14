@@ -208,7 +208,12 @@ section "Test 8 — wt-setup.sh creates a worktree"
 
 # Use a unique branch name per run to avoid collisions when reusing the repo
 TEST_BRANCH="test/smoke-$$"
-TEST_BRANCH_DIR="test-smoke-$$"
+
+# Mirror the directory-name derivation from wt-setup.sh: slashes → hyphens + 8-char hex hash.
+_safe="$(printf '%s' "$TEST_BRANCH" | tr '/' '-')"
+_hash="$(printf '%s' "$TEST_BRANCH" | cksum | awk '{printf "%08x", $1}')"
+TEST_BRANCH_DIR="${_safe}-${_hash}"
+unset _safe _hash
 
 (cd "$TARGET_DIR" && bash scripts/wt-setup.sh "$TEST_BRANCH" --base main) 2>&1 | while IFS= read -r line; do echo "  $line"; done
 

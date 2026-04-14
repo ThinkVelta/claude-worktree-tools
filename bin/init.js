@@ -8,7 +8,7 @@ import {
   chmodSync,
   appendFileSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
@@ -40,12 +40,15 @@ function printUsage() {
     `
 Usage: worktree-tools [options]
 
-Install worktree lifecycle files into the current git repository.
+Install worktree lifecycle files into the root of the current git repository
+(the directory that contains .git). Run from anywhere inside the repo — the
+installer always resolves and writes to the repo root.
 
 Options:
   --force, -f            Overwrite existing files
   --dry-run, -n          Print what would happen without writing
-  --scripts-dir <path>   Directory for wt-setup.sh (default: scripts)
+  --scripts-dir <path>   Relative path (from repo root) for wt-setup.sh
+                         (default: scripts). Must stay inside the repo.
   --help, -h             Show this help message
 `.trim(),
   );
@@ -78,7 +81,7 @@ function parseArgs(argv) {
         if (!args[i] || args[i].startsWith("-")) {
           fatal("--scripts-dir requires a path argument");
         }
-        flags.scriptsDir = args[i];
+        flags.scriptsDir = validateScriptsDir(args[i]);
         break;
       case "--help":
       case "-h":
@@ -97,13 +100,10 @@ function parseArgs(argv) {
 }
 
 // ---------------------------------------------------------------------------
-// Git repo verification
+// Git repo verification and root resolution
 // ---------------------------------------------------------------------------
 
 function assertGitRepo(cwd) {
-  if (existsSync(join(cwd, ".git"))) {
-    return;
-  }
   try {
     execSync("git rev-parse --is-inside-work-tree", {
       cwd,
@@ -112,9 +112,44 @@ function assertGitRepo(cwd) {
   } catch {
     fatal(
       "Not a git repository.\n" +
-        "Run this command from the root of a git repo, or initialize one with `git init`.",
+        "Run this command from inside a git repo, or initialize one with `git init`.",
     );
   }
+}
+
+/**
+ * Resolve the repository root (the directory that contains .git / .claude).
+ * Always use this as the write target instead of process.cwd() so that the
+ * installer works correctly when invoked from a subdirectory.
+ */
+function getRepoRoot(cwd) {
+  try {
+    return execSync("git rev-parse --show-toplevel", { cwd, stdio: "pipe" })
+      .toString()
+      .trim();
+  } catch {
+    fatal("Could not determine git repository root.");
+  }
+}
+
+/**
+ * Validate that --scripts-dir is a relative path that stays inside the repo.
+ * Absolute paths and paths containing `..` components that escape the root are
+ * rejected because they could silently write outside the target repository.
+ */
+function validateScriptsDir(value) {
+  const normalized = normalize(value);
+  if (isAbsolute(normalized)) {
+    fatal(
+      `--scripts-dir must be a relative path inside the repository, got: ${value}`,
+    );
+  }
+  if (normalized.startsWith("..")) {
+    fatal(
+      `--scripts-dir must not escape the repository root (path starts with '..'): ${value}`,
+    );
+  }
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +336,10 @@ function main() {
 
   assertGitRepo(cwd);
 
+  // Always install into the repo root (the directory containing .git/.claude),
+  // regardless of which subdirectory the user invoked the command from.
+  const repoRoot = getRepoRoot(cwd);
+
   if (!existsSync(TEMPLATES_DIR)) {
     fatal(
       `Templates directory not found at ${TEMPLATES_DIR}.\n` +
@@ -311,17 +350,18 @@ function main() {
   const manifest = getManifest(flags.scriptsDir);
 
   log("Installing worktree tools...");
+  log(`Target: ${repoRoot}`);
   log("");
 
   const results = installFiles({
     manifest,
     templatesDir: TEMPLATES_DIR,
-    targetDir: cwd,
+    targetDir: repoRoot,
     force: flags.force,
     dryRun: flags.dryRun,
   });
 
-  ensureGitignoreEntry(cwd, GITIGNORE_ENTRY, flags.dryRun);
+  ensureGitignoreEntry(repoRoot, GITIGNORE_ENTRY, flags.dryRun);
 
   printSummary(results, flags.dryRun);
 }

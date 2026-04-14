@@ -7,6 +7,7 @@ A standalone, installable toolkit that gives any repo a complete worktree lifecy
 When you run Claude Code in your repo, you share one working directory. Git worktrees give the agent its own directory on its own branch, but setting up a worktree means copying `.env` files, deriving ports, running install commands — 5-10 minutes of tax per worktree. This toolkit automates that to near-zero.
 
 Two layers:
+
 1. **A bash script** handles everything Claude can't see: copying `.env` files, deriving ports, running install commands.
 2. **Claude Code skills** (`/wt-open`, `/wt-merge`, `/wt-close`, `/wt-list`, `/wt-adopt`) provide the orchestration layer: naming branches, deciding merge strategies, tracking worktree state.
 
@@ -25,14 +26,15 @@ npx @thinkvelta/claude-worktree-tools
 
 ## What it installs
 
-| File | Purpose |
-|------|---------|
-| `scripts/wt-setup.sh` | Bash script that bootstraps a worktree (env files, ports, dependencies) |
-| `.claude/skills/wt-open/SKILL.md` | Create or reopen a worktree |
-| `.claude/skills/wt-merge/SKILL.md` | Merge a worktree branch back (PR or local merge) |
-| `.claude/skills/wt-close/SKILL.md` | Tear down a worktree cleanly |
-| `.claude/skills/wt-list/SKILL.md` | List active worktrees with status |
-| `.claude/skills/wt-adopt/SKILL.md` | Customize setup script for your repo's stack |
+| File                               | Purpose                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| `scripts/wt-setup.sh`              | Bash script that bootstraps a worktree (env files, ports, dependencies) |
+| `.claude/skills/wt-open/SKILL.md`  | Create or reopen a worktree                                             |
+| `.claude/skills/wt-merge/SKILL.md` | Merge a worktree branch back (PR or local merge)                        |
+| `.claude/skills/wt-close/SKILL.md` | Tear down a worktree cleanly                                            |
+| `.claude/skills/wt-list/SKILL.md`  | List active worktrees with status                                       |
+| `.claude/skills/wt-adopt/SKILL.md` | Customize setup script for your repo's stack                            |
+| `.claude/skills/wt-help/SKILL.md`  | Answer common questions about worktree workflow                         |
 
 It also appends `.claude/worktrees` to your `.gitignore`.
 
@@ -57,6 +59,10 @@ Lists all active worktrees with: branch name, clean/dirty status, ahead/behind r
 ### `/wt-adopt [--check-only]`
 
 Reads your repo's stack (package.json, pyproject.toml, Dockerfile, docker-compose, .env.example, Makefile, etc.) and customizes `scripts/wt-setup.sh` to fit. Runs a health check that flags hardcoded ports, missing env templates, and other worktree-unfriendly patterns.
+
+### `/wt-help [topic]`
+
+Answers common questions about working with worktrees: VSCode integration, why `.gitignore` is needed, how port offsets work, `.env` file handling, local merge workflows, and more. Good starting point for new users.
 
 ## CLI flags
 
@@ -89,23 +95,25 @@ The same branch name always produces the same worktree path and port offset. Run
 
 ## Local development & testing
 
-To test the package locally without publishing to npm:
+### Try it on a real repo
+
+`try-install.sh` is the local equivalent of `npx @thinkvelta/claude-worktree-tools`. It installs the toolkit files into any git repo:
 
 ```bash
-# Run test.sh with a target directory (creates a temp git repo there)
-./test.sh /tmp/my-test-repo
-
-# Or let it use the default location
-./test.sh
+./try-install.sh /path/to/your/repo
+./try-install.sh /path/to/your/repo --dry-run   # preview without writing
+./try-install.sh /path/to/your/repo --force      # overwrite existing files
 ```
 
-`test.sh` creates a temporary git repo, runs `bin/init.js` against it, and verifies that all files are installed correctly. It also tests `--dry-run`, `--force`, and `--scripts-dir` flags.
+### Run the test suite
 
-To manually test in an existing repo:
+`test.sh` runs automated smoke tests (install, flags, idempotency, worktree creation):
 
 ```bash
-cd /path/to/your/repo
-node /path/to/claude-worktree-tools/bin/init.js
+./test.sh                    # uses a temp directory
+./test.sh /tmp/my-test-repo  # uses the specified directory
+make test                    # same thing via Makefile
+make ci                      # lint + test
 ```
 
 ## License

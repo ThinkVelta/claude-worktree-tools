@@ -48,6 +48,5 @@ scripts/output/
 # Test artifacts
 tmp/
 
-# Agents
-.claude/
+# Worktrees
 .claude/worktrees

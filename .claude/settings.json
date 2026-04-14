@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Glob",
+      "Grep",
+      "Read",
+      "WebFetch",
+      "WebSearch",
+      "Bash(chmod *)",
+      "Bash(find *)",
+      "Bash(gh *)",
+      "Bash(git -C *)",
+      "Bash(git add *)",
+      "Bash(git add:*)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git commit *)",
+      "Bash(git diff *)",
+      "Bash(git diff)",
+      "Bash(git log *)",
+      "Bash(git log)",
+      "Bash(git merge *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(ls)",
+      "Bash(ls *)",
+      "Bash(make *)",
+      "Bash(mkdir *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(pwd)",
+      "Bash(tree *)",
+      "Bash(wc *)"
+    ],
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git push --force *)",
+      "Read(.env)",
+      "Bash(rm -rf *)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}

@@ -47,7 +47,7 @@ Options:
   --dry-run, -n          Print what would happen without writing
   --scripts-dir <path>   Directory for wt-setup.sh (default: scripts)
   --help, -h             Show this help message
-`.trim()
+`.trim(),
   );
 }
 
@@ -112,7 +112,7 @@ function assertGitRepo(cwd) {
   } catch {
     fatal(
       "Not a git repository.\n" +
-        "Run this command from the root of a git repo, or initialize one with `git init`."
+        "Run this command from the root of a git repo, or initialize one with `git init`.",
     );
   }
 }
@@ -151,6 +151,11 @@ function getManifest(scriptsDir) {
     {
       src: "skills/wt-adopt/SKILL.md",
       dest: ".claude/skills/wt-adopt/SKILL.md",
+      executable: false,
+    },
+    {
+      src: "skills/wt-help/SKILL.md",
+      dest: ".claude/skills/wt-help/SKILL.md",
       executable: false,
     },
   ];
@@ -276,7 +281,7 @@ function printSummary(results, dryRun) {
     log("  1. Review the installed files");
     log("  2. Commit them to your repo");
     log(
-      '  3. Open Claude Code and run /wt-adopt to customize the setup script for this repo'
+      "  3. Open Claude Code and run /wt-adopt to customize the setup script for this repo",
     );
   }
 }
@@ -294,7 +299,7 @@ function main() {
   if (!existsSync(TEMPLATES_DIR)) {
     fatal(
       `Templates directory not found at ${TEMPLATES_DIR}.\n` +
-        "This is a bug in @thinkvelta/claude-worktree-tools. Please report it."
+        "This is a bug in @thinkvelta/claude-worktree-tools. Please report it.",
     );
   }
 

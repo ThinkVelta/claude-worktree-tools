@@ -40,5 +40,11 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
+          git config --global init.defaultBranch main
+
       - name: Run smoke tests
         run: bash test.sh /tmp/cwt-ci-test

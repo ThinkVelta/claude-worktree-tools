@@ -200,21 +200,69 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 # ║  REPO-SPECIFIC PORT CONFIG (filled in by /wt-adopt)         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-# None
+# Uncomment and adjust the port variables below for your project.
+# PORT_OFFSET (0–99) is derived above and is deterministic per worktree.
+#
+# Example for a typical full-stack app:
+#
+#   BACKEND_PORT=$((8000 + PORT_OFFSET))
+#   FRONTEND_PORT=$((3000 + PORT_OFFSET))
+#
+#   # Update ports in the worktree .env (upsert pattern)
+#   update_env_var() {
+#     local file="$1" key="$2" val="$3"
+#     if grep -q "^${key}=" "$file" 2>/dev/null; then
+#       sed -i.bak "s|^${key}=.*|${key}=${val}|" "$file" && rm -f "${file}.bak"
+#     else
+#       echo "${key}=${val}" >> "$file"
+#     fi
+#   }
+#
+#   update_env_var "${WORKTREE_DIR}/.env" PORT "$BACKEND_PORT"
+#   update_env_var "${WORKTREE_DIR}/.env" FRONTEND_PORT "$FRONTEND_PORT"
+#
+#   info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
 
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  REPO-SPECIFIC INSTALL (filled in by /wt-adopt)             ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-# None
+# Uncomment the install commands for your project.
+#
+# Node.js (npm):
+#   info "Installing dependencies"
+#   (cd "${WORKTREE_DIR}" && npm ci)
+#
+# Node.js (pnpm):
+#   info "Installing dependencies"
+#   (cd "${WORKTREE_DIR}" && pnpm install --frozen-lockfile)
+#
+# Python (uv):
+#   info "Installing dependencies"
+#   (cd "${WORKTREE_DIR}" && uv sync)
+#
+# Makefile:
+#   info "Running setup"
+#   make -C "${WORKTREE_DIR}" setup
 
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  USER-DEFINED EXTRA SETUP                                   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-# None
+# Add any additional setup steps below. This section is never overwritten
+# by /wt-adopt — it is yours to customize.
+#
+# Examples:
+#   # Seed a local database
+#   (cd "${WORKTREE_DIR}" && python manage.py migrate)
+#
+#   # Create a branch-specific database
+#   createdb "myapp_$(echo "$BRANCH_NAME" | tr '/' '_')"
+#
+#   # Build step / warmup
+#   (cd "${WORKTREE_DIR}" && npm run build)
 
 
 # ╔══════════════════════════════════════════════════════════════╗

@@ -26,15 +26,16 @@ npx @thinkvelta/claude-worktree-tools
 
 ## What it installs
 
-| File                               | Purpose                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------- |
-| `scripts/wt-setup.sh`              | Bash script that bootstraps a worktree (env files, ports, dependencies) |
-| `.claude/skills/wt-open/SKILL.md`  | Create or reopen a worktree                                             |
-| `.claude/skills/wt-merge/SKILL.md` | Merge a worktree branch back (PR or local merge)                        |
-| `.claude/skills/wt-close/SKILL.md` | Tear down a worktree cleanly                                            |
-| `.claude/skills/wt-list/SKILL.md`  | List active worktrees with status                                       |
-| `.claude/skills/wt-adopt/SKILL.md` | Customize setup script for your repo's stack                            |
-| `.claude/skills/wt-help/SKILL.md`  | Answer common questions about worktree workflow                         |
+| File                                 | Purpose                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `scripts/wt-setup.sh`                | Bash script that bootstraps a worktree (env files, ports, dependencies) |
+| `.claude/skills/wt-open/SKILL.md`    | Create or reopen a worktree                                             |
+| `.claude/skills/wt-merge/SKILL.md`   | Merge a worktree branch into another branch                             |
+| `.claude/skills/wt-close/SKILL.md`   | Finish work — push, remove worktree, optionally delete branch           |
+| `.claude/skills/wt-list/SKILL.md`    | List active worktrees with status                                       |
+| `.claude/skills/wt-adopt/SKILL.md`   | Customize setup script for your repo's stack                            |
+| `.claude/skills/wt-help/SKILL.md`    | Answer common questions about worktree workflow                         |
+| `.claude/skills/wt-cleanup/SKILL.md` | Batch cleanup of stale worktrees and orphaned branches                  |
 
 It also appends `.claude/worktrees` to your `.gitignore`.
 
@@ -44,13 +45,17 @@ It also appends `.claude/worktrees` to your `.gitignore`.
 
 Creates a new worktree or reopens an existing one. Accepts a branch name (`feat/auth`) or a natural language description ("add auth to the API") from which it derives a branch name. Runs the setup script to copy `.env` files, derive ports, and install dependencies.
 
-### `/wt-merge [branch] [--local] [--into <target>]`
+### `/wt-merge <branch> --into <target> [--no-close]`
 
-Merges a worktree's branch back. Default: pushes and opens a PR via `gh`. With `--local` or `--into`: merges locally (useful for batching small fixes or branch decomposition). Cleans up the worktree after merge.
+Merges a worktree's branch into another branch using `git merge`. Always a real merge — for pushing to remote, use `/wt-close --push`. Useful for batching small fixes into one branch or folding sub-feature branches back into a parent.
 
-### `/wt-close [branch] [--force] [--keep-branch]`
+### `/wt-close [branch] [--push] [--force]`
 
-Tears down a worktree safely. Checks for uncommitted changes and unpushed commits before removing. Asks whether to delete the branch based on merge status.
+Finishes work in a worktree. Optionally pushes the branch to origin (`--push`), then lets you choose: remove worktree only, remove worktree + delete branch, or keep everything.
+
+### `/wt-cleanup [--dry-run]`
+
+Batch housekeeping: finds stale worktrees (7+ days inactive), missing worktree directories, orphaned branches, and local branches whose remote was deleted (e.g. after a PR merge on GitHub). Presents a report and lets you choose what to clean up.
 
 ### `/wt-list [--stale]`
 
@@ -87,9 +92,9 @@ Options:
 
 Worktrees are created under `.claude/worktrees/<branch-name>/` inside your repo. Each worktree gets:
 
-- **Copied `.env` files** from the main repo (preserving directory structure)
-- **Deterministic port offsets** (0-99, derived from the worktree path hash) so each worktree runs services on different ports
-- **Installed dependencies** via the detected package manager
+- **Copied `.env` files** from the main repo (preserving directory structure), copied by a script not an LLM
+- **Deterministic port offsets** (0-99, derived from the worktree path hash) so each worktree runs services on different ports so you can compare them side-by-side
+- **Installed dependencies** via the detected package manager, customized for your repo through `/wt-adopt`
 
 The same branch name always produces the same worktree path and port offset. Running `/wt-open` on an existing branch reopens rather than duplicates.
 
@@ -115,7 +120,3 @@ The same branch name always produces the same worktree path and port offset. Run
 make test                    # same thing via Makefile
 make ci                      # lint + test
 ```
-
-## License
-
-MIT

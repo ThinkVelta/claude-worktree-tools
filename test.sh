@@ -94,6 +94,7 @@ check "wt-close skill exists" test -f "$TARGET_DIR/.claude/skills/wt-close/SKILL
 check "wt-list skill exists" test -f "$TARGET_DIR/.claude/skills/wt-list/SKILL.md"
 check "wt-adopt skill exists" test -f "$TARGET_DIR/.claude/skills/wt-adopt/SKILL.md"
 check "wt-help skill exists" test -f "$TARGET_DIR/.claude/skills/wt-help/SKILL.md"
+check "wt-cleanup skill exists" test -f "$TARGET_DIR/.claude/skills/wt-cleanup/SKILL.md"
 check ".gitignore contains .claude/worktrees" grep -q '.claude/worktrees' "$TARGET_DIR/.gitignore"
 
 # Verify skill files have YAML frontmatter

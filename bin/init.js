@@ -158,6 +158,11 @@ function getManifest(scriptsDir) {
       dest: ".claude/skills/wt-help/SKILL.md",
       executable: false,
     },
+    {
+      src: "skills/wt-cleanup/SKILL.md",
+      dest: ".claude/skills/wt-cleanup/SKILL.md",
+      executable: false,
+    },
   ];
 }
 

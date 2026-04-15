@@ -106,6 +106,9 @@ Worktree ready!
 
 To start working in this worktree:
   cd <worktree-path> && claude
+
+Or start coding directly in VSCode:
+  code <worktree-path>
 ```
 
 ## Design principles

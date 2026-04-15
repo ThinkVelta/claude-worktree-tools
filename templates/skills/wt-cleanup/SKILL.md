@@ -49,17 +49,30 @@ First, prune remote-tracking references so git knows which remote branches are g
 git fetch --prune
 ```
 
-Then find local branches that are candidates for cleanup:
+Determine which branches must **never** be flagged as orphans:
 
 ```bash
-# All local branches (excluding main/master)
-git branch --format='%(refname:short)' | grep -v -E '^(main|master)$'
+# The repo's default branch (main, master, develop, trunk, …) — detected, not assumed
+DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+# Fallback if origin/HEAD isn't set
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/heads/main refs/heads/master refs/heads/trunk refs/heads/develop | head -n1)
 
-# Branches with worktrees (still in active use)
-git worktree list --porcelain | grep '^branch ' | sed 's|branch refs/heads/||'
+# The branch currently checked out in the main working tree
+CURRENT_BRANCH=$(git -C "$(git rev-parse --show-toplevel)" branch --show-current)
+
+# Branches checked out in any worktree (these are "in use" — git won't let you delete them anyway)
+git worktree list --porcelain | awk '/^branch / { sub("refs/heads/", "", $2); print $2 }'
 ```
 
-For each local branch that doesn't have a worktree, check:
+Then list candidate local branches, **excluding** the default branch, the current branch, and any branch that has a worktree:
+
+```bash
+git branch --format='%(refname:short)'
+```
+
+Filter that list in your head (or with grep -v) against `$DEFAULT_BRANCH`, `$CURRENT_BRANCH`, and the worktree branches above. **Do not hardcode `main|master`** — many repos use `develop`, `trunk`, or custom default branches, and the user may currently be checked out on a branch that isn't the default.
+
+For each remaining local branch, check:
 
 - **Is it merged into `main`?**
   ```bash

@@ -3,110 +3,79 @@ name: wt-help
 description: Answer common questions about working with worktrees — VSCode integration, gitignore, port offsets, env files, workflow tips. Use this when the user asks how worktrees work, why something looks different in their editor, how to see diffs, or has any question about the worktree setup. Also triggers for `/wt-help [topic]`.
 model: haiku
 allowed-tools: Bash Read Glob Grep
-argument-hint: "[topic]"
+argument-hint: "[question]"
 ---
 
 # Worktree Help
 
-Answer the user's question about working with worktrees. Use `$ARGUMENTS` to determine what they're asking about. If empty, print the topic list below and ask what they need help with.
+`$ARGUMENTS` is the user's question. If empty, print the **Overview** section below verbatim. Otherwise, answer their question using the **FAQ** section as your primary reference, falling back to your knowledge of git worktrees and this repo's setup.
 
-## Topics
+Keep answers concise and practical. When relevant, include `code .claude/worktrees/<branch-dir>` — it's the single most useful tip for new users.
 
-### vscode — "How do I see my worktree in VSCode?"
+---
 
-Worktrees live inside `.claude/worktrees/`, which is gitignored. This is correct and required — without the gitignore entry, git would try to track the worktree's files as part of the parent repo.
+## Overview (print when `$ARGUMENTS` is empty)
 
-This means the main repo's Source Control panel will **not** show worktree changes. That's by design.
+**claude-worktree-tools** is a toolkit for running multiple branches of the same repo in parallel, each in its own isolated git worktree, with Claude Code skills that handle the lifecycle for you.
 
-**To get full VSCode support (diffs, Source Control, file explorer) for a worktree, open it in its own window:**
+**Why it exists.** Switching branches mid-task is disruptive: you stash, rebuild, lose dev server state, and risk polluting one branch's `.env` with another's. Worktrees give each branch its own directory, dependencies, ports, and env — so you (or a Claude agent) can spin up a parallel task without touching what you're already working on. This package automates the boring parts: derived ports, copied env files, dependency installs, cleanup, and merge/close flows.
 
-```bash
-code .claude/worktrees/<branch-dir>
-```
+**Links**
 
-This gives you a separate VSCode instance scoped to that branch — exactly like working in a second repo.
+- Repo: https://github.com/ThinkVelta/claude-worktree-tools
+- Issues: https://github.com/ThinkVelta/claude-worktree-tools/issues
+- Git worktrees docs: https://git-scm.com/docs/git-worktree
 
-**Alternative: multi-root workspace.** If you prefer one window:
+**Available `/wt-*` skills**
 
-1. File > Add Folder to Workspace...
-2. Select the worktree directory under `.claude/worktrees/`
-3. Source Control will show both repos in separate sections
+| Command                                              | Purpose                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------- |
+| `/wt-adopt [--check-only]`                           | One-time setup: customize `wt-setup.sh` for this repo's stack |
+| `/wt-open [branch or description] [--base <branch>]` | Create or reopen a worktree (env, deps, ports handled)        |
+| `/wt-list [--stale]`                                 | List active worktrees with branch, sync state, staleness      |
+| `/wt-merge <branch> --into <target> [--no-close]`    | Local git merge of one branch into another                    |
+| `/wt-close [branch] [--push] [--force]`              | Push, remove the worktree, optionally delete the branch       |
+| `/wt-cleanup [--dry-run]`                            | Batch cleanup of stale worktrees and orphaned branches        |
+| `/wt-help [question]`                                | This help — ask any worktree question in natural language     |
 
-Separate windows is the more common pattern — it avoids confusion about which branch you're editing.
+Ask `/wt-help <your question>` for anything specific (VSCode setup, ports, env files, merge strategy, etc.).
 
-### gitignore — "Why is the worktree in .gitignore? Is that correct?"
+---
 
-Yes, it's required. Worktrees are not nested repos — they're git's own mechanism for checking out a branch into a separate directory. Git tracks them internally (`git worktree list`).
+## FAQ
 
-If you removed the gitignore entry, git would try to track the worktree's files as content of the parent repo, creating duplicated and conflicting files. The gitignore entry prevents this.
+**Q: How do I see a worktree in VSCode?**
+Open it as its own window: `code .claude/worktrees/<branch-dir>`. The main repo's Source Control panel won't show worktree changes — that's by design (worktrees are gitignored). Alternative: File → Add Folder to Workspace for a multi-root setup.
 
-Think of each worktree as a lightweight clone that shares git history but has its own working directory. You wouldn't expect a clone to show up inside the original repo's Source Control either.
+**Q: Why is `.claude/worktrees/` in `.gitignore`?**
+Required. Worktrees are git's own checkout mechanism, not nested repos. Without the gitignore entry, git would try to track the worktree's files as content of the parent repo. `git worktree list` is how git tracks them.
 
-### workflow — "What's the typical workflow?"
+**Q: What's the typical workflow?**
+`/wt-open <task>` → `code .claude/worktrees/<branch-dir>` → work & commit → `/wt-close --push` (or `/wt-merge` to fold into another branch first). Use `/wt-list` to see everything in flight.
 
-1. **`/wt-open <task>`** — Creates a worktree with its own branch, copies `.env` files, installs dependencies, derives unique ports.
-2. **Open it:** `code .claude/worktrees/<branch-dir>` or `cd .claude/worktrees/<branch-dir> && claude`
-3. **Work normally** — commit, run tests, use Claude Code, all scoped to that branch.
-4. **`/wt-merge`** — Push and open a PR (default), or merge locally into another branch.
-5. **`/wt-close`** — Tear down the worktree when done.
+**Q: How do port offsets work?**
+Each worktree gets a deterministic 0–99 offset derived from its path, written into its `.env`. Same branch → same ports (bookmarkable). Different worktrees → no collisions. Configure which env vars to offset in the `REPO-SPECIFIC PORT CONFIG` section of `scripts/wt-setup.sh` (run `/wt-adopt` to set up).
 
-You can have multiple worktrees active at the same time. Use `/wt-list` to see them all.
+**Q: What happens to `.env` files?**
+All `.env*` files are copied from the main repo into the worktree, preserving directory structure (monorepo-friendly). On `--reopen`, they're re-copied so worktrees pick up changes from the main repo. Symlinked `.env` files are skipped.
 
-### ports — "How do port offsets work?"
+**Q: When should I use `/wt-merge` instead of opening a PR?**
+Two cases: **batching small fixes** (merge several tiny worktrees into one branch, open one PR), and **branch decomposition** (split a big feature into sub-worktrees, fold them back into the parent, then open one PR from the parent). For everything else, just `/wt-close --push` and PR normally.
 
-Each worktree gets a deterministic port offset (0–99) derived from its directory path. This means:
+**Q: Can I run multiple worktrees at once?**
+Yes — that's the whole point. Each has isolated deps, ports, and env. Run `/wt-list` to see them all. A common pattern: one worktree for your main task, others for parallel Claude agents working on smaller things.
 
-- The same branch always gets the same ports (you can bookmark URLs).
-- Different worktrees get different ports (no collisions, usually).
-- Ports are written to the worktree's `.env` file by the setup script.
+**Q: How do I update dependencies in a worktree?**
+Run your normal install command inside the worktree directory (`pnpm install`, `bun install`, etc.). The worktree has its own `node_modules` — installs don't affect the main repo or other worktrees.
 
-Example: if your app normally runs on port 3000 and the worktree's offset is 17, it runs on port 3017 in that worktree.
+**Q: What if I forget about a worktree?**
+`/wt-list --stale` shows worktrees with no recent activity. `/wt-cleanup` batch-removes stale ones (use `--dry-run` first to preview).
 
-The offset is configured by `/wt-adopt` in the `REPO-SPECIFIC PORT CONFIG` section of `scripts/wt-setup.sh`. If ports aren't being offset, run `/wt-adopt` to set it up.
+**Q: Is the main repo affected when I work in a worktree?**
+No. The main repo's working directory, branch, and dev server are untouched. Only the shared `.git` directory is updated when you commit (which is the same as any branch switch).
 
-### env — "What happens with .env files?"
+**Q: My setup script isn't doing what I want — how do I customize it?**
+Edit `scripts/wt-setup.sh` directly, or re-run `/wt-adopt` to regenerate it. The script is intentionally checked in and editable per repo.
 
-The setup script copies all `.env*` files from the main repo into the worktree, preserving directory structure. This includes nested `.env` files in monorepo subdirectories.
-
-On `--reopen`, `.env` files are re-copied from the main repo. This is intentional — it picks up any changes you made to `.env` in the main repo since the worktree was created.
-
-Symlinked `.env` files are skipped (the target is copied, not the symlink).
-
-### local-merge — "When should I use local merge instead of a PR?"
-
-Two main scenarios:
-
-**Batching small fixes:** You have several tiny worktrees (typo fix, dep bump, color tweak). Instead of opening 5 PRs, merge them all locally into one branch and open a single PR:
-
-```
-/wt-merge fix/typo --into feat/cleanup
-/wt-merge fix/deps --into feat/cleanup
-/wt-merge fix/color --into feat/cleanup
-# Then open one PR from feat/cleanup
-```
-
-**Branch decomposition:** You split a large feature into sub-tasks, each in its own worktree. Merge them back into the parent branch locally, then open one PR from the parent:
-
-```
-/wt-merge feat/auth-nav --into feat/auth
-/wt-merge feat/auth-table --into feat/auth
-# Then open one PR from feat/auth
-```
-
-### commands — "What commands are available?"
-
-| Command                                              | Purpose                                       |
-| ---------------------------------------------------- | --------------------------------------------- |
-| `/wt-open [branch or description] [--base <branch>]` | Create or reopen a worktree                   |
-| `/wt-merge <branch> --into <target> [--no-close]`    | Merge a branch into another branch            |
-| `/wt-close [branch] [--push] [--force]`              | Finish work — push, remove worktree, clean up |
-| `/wt-list [--stale]`                                 | List worktrees with status                    |
-| `/wt-cleanup [--dry-run]`                            | Batch cleanup of stale worktrees and branches |
-| `/wt-adopt [--check-only]`                           | Configure setup script for your repo          |
-| `/wt-help [topic]`                                   | This help                                     |
-
-## Instructions
-
-Match the user's question to the closest topic above and answer using that content. If their question doesn't match any topic, answer based on your knowledge of git worktrees and the worktree tools setup in this repo.
-
-Keep answers concise and practical. Include the `code <path>` command when relevant — it's the most useful tip for new users.
+**Q: How do I delete a branch and its worktree completely?**
+`/wt-close <branch> --force` removes the worktree and deletes the local branch. Add `--push` first if you want to push before tearing down.

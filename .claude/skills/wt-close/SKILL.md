@@ -92,10 +92,22 @@ git worktree remove --force "<worktree-path>"
 
 ### Option 2: Remove worktree + delete branch
 
+**Critical ordering:** if the current Claude session is running from inside the worktree being closed, removing the worktree first will yank the cwd out from under the shell — subsequent commands (including the branch delete) will fail with "No such file or directory" and the branch will be orphaned. Always operate from the main working tree and run branch-delete-compatible commands in a single, safe sequence.
+
+First, resolve the main working tree path (not the worktree you're closing):
+
 ```bash
-git worktree remove "<worktree-path>"
-git branch -d "<branch>"
+MAIN_REPO=$(git worktree list --porcelain | awk '/^worktree / { print $2; exit }')
 ```
+
+Then run both commands with explicit `-C "$MAIN_REPO"` so neither depends on the shell's cwd:
+
+```bash
+git -C "$MAIN_REPO" worktree remove "<worktree-path>"
+git -C "$MAIN_REPO" branch -d "<branch>"
+```
+
+Note: `git branch -d` cannot delete a branch that is still checked out in a worktree, so the worktree removal must happen first. The `-C "$MAIN_REPO"` flag is what keeps the session alive when Claude was launched from inside the worktree — without it, the second command runs in a directory that no longer exists.
 
 If `git branch -d` fails (branch not fully merged), tell the user:
 

@@ -239,6 +239,48 @@ check "Reopen succeeds without error" true
 check "Worktree still valid after reopen" test -f "$TARGET_DIR/.claude/worktrees/$TEST_BRANCH_DIR/.git"
 
 # ---------------------------------------------------------------------------
+# Test 10: --skills-only
+# ---------------------------------------------------------------------------
+
+section "Test 10 — --skills-only flag"
+
+SKILLS_ONLY_DIR="${TARGET_DIR}/.test-skillsonly"
+mkdir -p "$SKILLS_ONLY_DIR"
+git -C "$SKILLS_ONLY_DIR" init --quiet -b main
+git -C "$SKILLS_ONLY_DIR" config user.name "claude-worktree-tools test"
+git -C "$SKILLS_ONLY_DIR" config user.email "test@example.invalid"
+git -C "$SKILLS_ONLY_DIR" commit --allow-empty -m "initial commit" --quiet
+
+(cd "$SKILLS_ONLY_DIR" && node "$INIT_JS" --skills-only)
+
+check "--skills-only: wt-open skill installed" test -f "$SKILLS_ONLY_DIR/.claude/skills/wt-open/SKILL.md"
+check "--skills-only: wt-close skill installed" test -f "$SKILLS_ONLY_DIR/.claude/skills/wt-close/SKILL.md"
+check "--skills-only: wt-setup.sh not created" test ! -f "$SKILLS_ONLY_DIR/scripts/wt-setup.sh"
+check_eval "--skills-only: .gitignore not modified" "! grep -q '.claude/worktrees' '$SKILLS_ONLY_DIR/.gitignore' 2>/dev/null"
+
+# ---------------------------------------------------------------------------
+# Test 11: .claude/skills parity with templates/skills
+# ---------------------------------------------------------------------------
+
+section "Test 11 — .claude/skills parity with templates/skills"
+
+for skill in wt-open wt-close wt-cleanup wt-help wt-list wt-merge wt-adopt; do
+  src="${SCRIPT_DIR}/.claude/skills/${skill}/SKILL.md"
+  tpl="${SCRIPT_DIR}/templates/skills/${skill}/SKILL.md"
+  if [ -f "$src" ] && [ -f "$tpl" ]; then
+    if diff -q "$src" "$tpl" >/dev/null 2>&1; then
+      pass "${skill}: .claude and templates copies are identical"
+    else
+      fail "${skill}: .claude and templates copies differ"
+    fi
+  elif [ ! -f "$src" ] && [ ! -f "$tpl" ]; then
+    pass "${skill}: both copies absent (not yet added)"
+  else
+    fail "${skill}: one copy exists but not the other"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

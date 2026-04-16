@@ -92,22 +92,23 @@ git worktree remove --force "<worktree-path>"
 
 ### Option 2: Remove worktree + delete branch
 
-**Critical ordering:** if the current Claude session is running from inside the worktree being closed, removing the worktree first will yank the cwd out from under the shell — subsequent commands (including the branch delete) will fail with "No such file or directory" and the branch will be orphaned. Always operate from the main working tree and run branch-delete-compatible commands in a single, safe sequence.
+**Critical: both commands MUST run in a single Bash call.** Claude Code's Bash tool resolves the shell's cwd at the start of each invocation. If the session is running from inside the worktree and you remove the worktree in one Bash call, the *next* Bash call will fail immediately ("No such file or directory") before any command — including `git -C` — can execute. The branch delete becomes impossible and the branch is orphaned.
 
-First, resolve the main working tree path (not the worktree you're closing):
+The worktree must be removed before the branch delete (`git branch -d` refuses to delete a branch that's checked out in a worktree). So the correct sequence is: remove worktree, then delete branch — but **in one shell invocation**.
+
+First, resolve the main working tree path:
 
 ```bash
 MAIN_REPO=$(git worktree list --porcelain | awk '/^worktree / { print $2; exit }')
 ```
 
-Then run both commands with explicit `-C "$MAIN_REPO"` so neither depends on the shell's cwd:
+Then run both commands in a **single Bash call**, chained with `&&`:
 
 ```bash
-git -C "$MAIN_REPO" worktree remove "<worktree-path>"
-git -C "$MAIN_REPO" branch -d "<branch>"
+git -C "$MAIN_REPO" worktree remove "<worktree-path>" && git -C "$MAIN_REPO" branch -d "<branch>"
 ```
 
-Note: `git branch -d` cannot delete a branch that is still checked out in a worktree, so the worktree removal must happen first. The `-C "$MAIN_REPO"` flag is what keeps the session alive when Claude was launched from inside the worktree — without it, the second command runs in a directory that no longer exists.
+**Why this works:** the shell resolves its cwd once when the Bash call starts. Both `git` commands use `-C "$MAIN_REPO"` so git operates from the main repo regardless of the shell's cwd. Since they run in the same shell process, the cwd is only checked once — at launch — before any directory is removed.
 
 If `git branch -d` fails (branch not fully merged), tell the user:
 

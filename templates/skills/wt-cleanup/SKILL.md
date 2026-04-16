@@ -74,9 +74,9 @@ Filter that list in your head (or with grep -v) against `$DEFAULT_BRANCH`, `$CUR
 
 For each remaining local branch, check:
 
-- **Is it merged into `main`?**
+- **Is it merged into the default branch?**
   ```bash
-  git branch --merged main | grep -w "<branch>"
+  git branch --merged "$DEFAULT_BRANCH" | grep -w "<branch>"
   ```
 - **Was its remote deleted?** (common after merging a PR on GitHub)
   ```bash
@@ -93,8 +93,8 @@ Classify:
 | Status              | Criteria                                                                     |
 | ------------------- | ---------------------------------------------------------------------------- |
 | **Remote deleted**  | Tracked a remote that's gone (PR likely merged and branch deleted on GitHub) |
-| **Merged orphan**   | Merged into main, no worktree, no remote — safe to delete                    |
-| **Unmerged orphan** | Not merged, no worktree, no remote — may be abandoned work                   |
+| **Merged orphan**   | Merged into `$DEFAULT_BRANCH`, no worktree, no remote — safe to delete       |
+| **Unmerged orphan** | Not merged into `$DEFAULT_BRANCH`, no worktree, no remote — may be abandoned work |
 | **Has open PR**     | Skip — still in use                                                          |
 
 ## Step 3 — Present findings
@@ -117,7 +117,7 @@ Branches with deleted remote (PR likely merged on GitHub):
   fix/login-bug          remote gone — safe to delete locally
 
 Orphaned branches (no worktree, no remote):
-  feat/abandoned-idea    merged into main — safe to delete
+  feat/abandoned-idea    merged into $DEFAULT_BRANCH — safe to delete
   fix/half-done          NOT merged — review before deleting
 
 Active worktrees (no action needed):

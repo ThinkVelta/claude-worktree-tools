@@ -2,6 +2,8 @@
 
 A standalone, installable toolkit that gives any repo a complete worktree lifecycle for parallel AI-agent development with Claude Code.
 
+[![asciicast](https://asciinema.org/a/xh73at3HZxKzcaUS.svg)](https://asciinema.org/a/xh73at3HZxKzcaUS)
+
 ## Why
 
 When you run Claude Code in your repo, you share one working directory. Git worktrees give the agent its own directory on its own branch, but setting up a worktree means copying `.env` files, deriving ports, running install commands — 5-10 minutes of tax per worktree. This toolkit automates that to near-zero.
@@ -9,77 +11,70 @@ When you run Claude Code in your repo, you share one working directory. Git work
 Two layers:
 
 1. **A bash script** handles everything Claude can't see: copying `.env` files, deriving ports, running install commands.
-2. **Claude Code skills** (`/wt-open`, `/wt-merge`, `/wt-close`, `/wt-list`, `/wt-adopt`) provide the orchestration layer: naming branches, deciding merge strategies, tracking worktree state.
+2. **Claude Code skills** (`/wt-open`, `/wt-close`, `/wt-merge`, `/wt-list`, `/wt-cleanup`, `/wt-adopt`, `/wt-help`) provide the orchestration layer: naming branches, deciding merge strategies, tracking worktree state.
 
 ## Quick start
 
+Both steps below are **one-time per repo**. After that, you just use the `/wt-*` skills from Claude Code.
+
+### 1. Install
+
+From anywhere inside your git repo:
+
 ```bash
-# 1. Install the toolkit into your repo
 npx @thinkvelta/claude-worktree-tools
+```
 
-# 2. Open Claude Code and customize the setup script for your stack
+This writes `scripts/wt-setup.sh`, the `.claude/skills/wt-*/` skill files, and appends `.claude/worktrees` to your `.gitignore`. Review the changes, then commit them.
+
+#### Install flags
+
+| Flag                   | Purpose                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `--force`, `-f`        | Overwrite existing files. Required for re-installs or updates.                                                           |
+| `--dry-run`, `-n`      | Print what would be written without touching the filesystem.                                                             |
+| `--skills-only`        | Install only the `/wt-*` skills under `.claude/skills/`. Skips `wt-setup.sh` and the `.gitignore` entry. See note below. |
+| `--scripts-dir <path>` | Where to place `wt-setup.sh` relative to repo root (default: `scripts`). Must stay inside the repo.                      |
+| `--help`, `-h`         | Show CLI help.                                                                                                           |
+
+> **Updating later.** Once you've customized `scripts/wt-setup.sh` for your repo, you don't want a subsequent install to overwrite it. Use `npx @thinkvelta/claude-worktree-tools --skills-only --force` to refresh just the skill files.
+
+### 2. Setup
+
+Open Claude Code inside the repo and run:
+
+```
 /wt-adopt
+```
 
-# 3. Create a worktree and start working
+`/wt-adopt` reads your stack (package.json, pyproject.toml, Dockerfile, docker-compose, `.env.example`, Makefile, …) and rewrites `scripts/wt-setup.sh` to match — install commands, ports to offset, env files to copy. It also runs a health check that flags hardcoded ports and other worktree-unfriendly patterns.
+
+**Then tailor it to your project.** `/wt-adopt` gets you 90% of the way there, but every repo has its quirks. Take a few minutes to:
+
+- Open `scripts/wt-setup.sh` and adjust the install commands, port list, and any custom bootstrap steps (DB seeding, codegen, symlinks…) that the heuristic couldn't infer.
+- Skim the installed skill files under `.claude/skills/wt-*/SKILL.md`. They're plain markdown — edit branch-naming conventions, default base branches, or merge strategies to match your team's workflow.
+- Commit the customizations so the rest of your team inherits them.
+
+Once you're happy, create your first worktree:
+
+```
 /wt-open implement the auth refactor from issue 42
 ```
 
 ## What it installs
 
-| File                                 | Purpose                                                                 |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| `scripts/wt-setup.sh`                | Bash script that bootstraps a worktree (env files, ports, dependencies) |
-| `.claude/skills/wt-open/SKILL.md`    | Create or reopen a worktree                                             |
-| `.claude/skills/wt-merge/SKILL.md`   | Merge a worktree branch into another branch                             |
-| `.claude/skills/wt-close/SKILL.md`   | Finish work — push, remove worktree, optionally delete branch           |
-| `.claude/skills/wt-list/SKILL.md`    | List active worktrees with status                                       |
-| `.claude/skills/wt-adopt/SKILL.md`   | Customize setup script for your repo's stack                            |
-| `.claude/skills/wt-help/SKILL.md`    | Answer common questions about worktree workflow                         |
-| `.claude/skills/wt-cleanup/SKILL.md` | Batch cleanup of stale worktrees and orphaned branches                  |
+The installer writes the following files and appends `.claude/worktrees` to your `.gitignore`:
 
-It also appends `.claude/worktrees` to your `.gitignore`.
-
-## Skills
-
-### `/wt-open [branch | task description]`
-
-Creates a new worktree or reopens an existing one. Accepts a branch name (`feat/auth`) or a natural language description ("add auth to the API") from which it derives a branch name. Runs the setup script to copy `.env` files, derive ports, and install dependencies.
-
-### `/wt-merge <branch> --into <target> [--no-close]`
-
-Merges a worktree's branch into another branch using `git merge`. Always a real merge — for pushing to remote, use `/wt-close --push`. Useful for batching small fixes into one branch or folding sub-feature branches back into a parent.
-
-### `/wt-close [branch] [--push] [--force]`
-
-Finishes work in a worktree. Optionally pushes the branch to origin (`--push`), then lets you choose: remove worktree only, remove worktree + delete branch, or keep everything.
-
-### `/wt-cleanup [--dry-run]`
-
-Batch housekeeping: finds stale worktrees (7+ days inactive), missing worktree directories, orphaned branches, and local branches whose remote was deleted (e.g. after a PR merge on GitHub). Presents a report and lets you choose what to clean up.
-
-### `/wt-list [--stale]`
-
-Lists all active worktrees with: branch name, clean/dirty status, ahead/behind remote, last commit, and staleness warnings (3+ days inactive).
-
-### `/wt-adopt [--check-only]`
-
-Reads your repo's stack (package.json, pyproject.toml, Dockerfile, docker-compose, .env.example, Makefile, etc.) and customizes `scripts/wt-setup.sh` to fit. Runs a health check that flags hardcoded ports, missing env templates, and other worktree-unfriendly patterns.
-
-### `/wt-help [topic]`
-
-Answers common questions about working with worktrees: VSCode integration, why `.gitignore` is needed, how port offsets work, `.env` file handling, local merge workflows, and more. Good starting point for new users.
-
-## CLI flags
-
-```
-npx @thinkvelta/claude-worktree-tools [options]
-
-Options:
-  --force, -f            Overwrite existing files
-  --dry-run, -n          Print what would happen without writing
-  --scripts-dir <path>   Directory for wt-setup.sh (default: scripts)
-  --help, -h             Show help
-```
+| File                                 | Skill                                             | Description                                                                                                                                                                                                           |
+| ------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/wt-setup.sh`                | —                                                 | Bash script that bootstraps a worktree (env files, ports, dependencies). This is the file you customize via `/wt-adopt`.                                                                                              |
+| `.claude/skills/wt-open/SKILL.md`    | `/wt-open [branch \| description]`                | Create or reopen a worktree. Accepts a branch name (`feat/auth`) or a natural language description from which it derives one. Runs the setup script to copy `.env` files, derive ports, and install dependencies.     |
+| `.claude/skills/wt-close/SKILL.md`   | `/wt-close [branch] [--push] [--force]`           | Finish work in a worktree. Optionally pushes to origin, then lets you choose: remove worktree only, remove worktree + delete branch, or keep everything.                                                              |
+| `.claude/skills/wt-merge/SKILL.md`   | `/wt-merge <branch> --into <target> [--no-close]` | Local `git merge` of one worktree branch into another. Useful for batching small fixes into one branch or folding sub-features back into a parent before opening a single PR.                                         |
+| `.claude/skills/wt-list/SKILL.md`    | `/wt-list [--stale]`                              | List active worktrees with branch, clean/dirty status, ahead/behind remote, last commit age, and staleness warnings.                                                                                                  |
+| `.claude/skills/wt-cleanup/SKILL.md` | `/wt-cleanup [--dry-run]`                         | Batch housekeeping: finds stale worktrees (7+ days inactive), missing directories, orphaned branches, and branches whose remote was deleted after a PR merge. Presents a report and lets you choose what to clean up. |
+| `.claude/skills/wt-adopt/SKILL.md`   | `/wt-adopt [--check-only]`                        | Reads your repo's stack and rewrites `scripts/wt-setup.sh` to match. Runs a health check that flags hardcoded ports, missing env templates, and other worktree-unfriendly patterns.                                   |
+| `.claude/skills/wt-help/SKILL.md`    | `/wt-help [question]`                             | Quick overview of the toolkit, links to this repo, FAQ on VSCode integration, ports, env files, merge strategies, and more. Good starting point for new users.                                                        |
 
 ## Requirements
 
@@ -97,6 +92,8 @@ Worktrees are created under `.claude/worktrees/<branch-name>/` inside your repo.
 - **Installed dependencies** via the detected package manager, customized for your repo through `/wt-adopt`
 
 The same branch name always produces the same worktree path and port offset. Running `/wt-open` on an existing branch reopens rather than duplicates.
+
+**Design note: close ordering.** When `/wt-close` removes a worktree _and_ deletes its branch, both commands must run in a **single Bash call** chained with `&&`. Claude Code resolves the shell's cwd at the start of each Bash invocation — if the session is inside the worktree and you remove it in one call, the _next_ call fails immediately ("No such file or directory") before any command can execute, orphaning the branch. Running `git -C "$MAIN_REPO" worktree remove … && git -C "$MAIN_REPO" branch -d …` in one shell avoids this: cwd is resolved once at launch, and both `git` commands operate from the main repo via `-C`.
 
 ## Local development & testing
 
@@ -120,3 +117,43 @@ The same branch name always produces the same worktree path and port offset. Run
 make test                    # same thing via Makefile
 make ci                      # lint + test
 ```
+
+## Publishing to npm
+
+The package is published as [`@thinkvelta/claude-worktree-tools`](https://www.npmjs.com/package/@thinkvelta/claude-worktree-tools) on the public npm registry. Only maintainers with access to the `@thinkvelta` scope can publish.
+
+### One-time setup
+
+```bash
+npm login                      # authenticate with your npm account
+npm whoami                     # confirm you're logged in
+```
+
+### Cut a release
+
+1. Make sure `main` is clean and CI is green (`make ci`).
+2. Bump the version — `npm version patch|minor|major` updates `package.json` and creates a git tag.
+3. Verify the tarball contents before publishing:
+   ```bash
+   npm pack --dry-run          # lists files that would ship (should match the "files" field in package.json)
+   ```
+4. Publish:
+   ```bash
+   npm publish --access public # --access public is required for the first publish of a scoped package
+   ```
+5. Push the bump commit and tag:
+   ```bash
+   git push --follow-tags
+   ```
+6. Confirm the new version resolves:
+   ```bash
+   npx @thinkvelta/claude-worktree-tools@latest --help
+   ```
+
+### Versioning guidance
+
+- `patch` — bug fixes, skill wording tweaks, doc changes.
+- `minor` — new skill, new CLI flag, new template file (backwards-compatible).
+- `major` — breaking changes: renamed skills, changed default install paths, or manifest entries removed.
+
+Test against a scratch repo with `./try-install.sh /tmp/scratch-repo` before publishing — the installed output is what end users actually see.

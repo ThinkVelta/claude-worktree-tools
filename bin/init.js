@@ -47,6 +47,10 @@ installer always resolves and writes to the repo root.
 Options:
   --force, -f            Overwrite existing files
   --dry-run, -n          Print what would happen without writing
+  --skills-only          Install only the /wt-* skills under .claude/skills/.
+                         Skips wt-setup.sh and the .gitignore entry. Useful for
+                         updating skills without touching an already-customized
+                         setup script.
   --scripts-dir <path>   Relative path (from repo root) for wt-setup.sh
                          (default: scripts). Must stay inside the repo.
   --help, -h             Show this help message
@@ -63,6 +67,7 @@ function parseArgs(argv) {
   const flags = {
     force: false,
     dryRun: false,
+    skillsOnly: false,
     scriptsDir: "scripts",
   };
 
@@ -75,6 +80,9 @@ function parseArgs(argv) {
       case "--dry-run":
       case "-n":
         flags.dryRun = true;
+        break;
+      case "--skills-only":
+        flags.skillsOnly = true;
         break;
       case "--scripts-dir":
         i++;
@@ -295,7 +303,7 @@ function ensureGitignoreEntry(targetDir, entry, dryRun) {
 // Summary
 // ---------------------------------------------------------------------------
 
-function printSummary(results, dryRun) {
+function printSummary(results, dryRun, skillsOnly) {
   log("");
   if (dryRun) {
     log("Dry run complete. No files were written.");
@@ -320,9 +328,11 @@ function printSummary(results, dryRun) {
     log("Next steps:");
     log("  1. Review the installed files");
     log("  2. Commit them to your repo");
-    log(
-      "  3. Open Claude Code and run /wt-adopt to customize the setup script for this repo",
-    );
+    if (!skillsOnly) {
+      log(
+        "  3. Open Claude Code and run /wt-adopt to customize the setup script for this repo",
+      );
+    }
   }
 }
 
@@ -347,9 +357,18 @@ function main() {
     );
   }
 
-  const manifest = getManifest(flags.scriptsDir);
+  let manifest = getManifest(flags.scriptsDir);
+  if (flags.skillsOnly) {
+    manifest = manifest.filter((entry) =>
+      entry.src.startsWith("skills/"),
+    );
+  }
 
-  log("Installing worktree tools...");
+  log(
+    flags.skillsOnly
+      ? "Installing worktree skills only..."
+      : "Installing worktree tools...",
+  );
   log(`Target: ${repoRoot}`);
   log("");
 
@@ -361,9 +380,11 @@ function main() {
     dryRun: flags.dryRun,
   });
 
-  ensureGitignoreEntry(repoRoot, GITIGNORE_ENTRY, flags.dryRun);
+  if (!flags.skillsOnly) {
+    ensureGitignoreEntry(repoRoot, GITIGNORE_ENTRY, flags.dryRun);
+  }
 
-  printSummary(results, flags.dryRun);
+  printSummary(results, flags.dryRun, flags.skillsOnly);
 }
 
 main();

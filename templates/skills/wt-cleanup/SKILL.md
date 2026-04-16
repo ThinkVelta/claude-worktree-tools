@@ -49,21 +49,43 @@ First, prune remote-tracking references so git knows which remote branches are g
 git fetch --prune
 ```
 
-Then find local branches that are candidates for cleanup:
+Determine which branches must **never** be flagged as orphans:
 
 ```bash
-# All local branches (excluding main/master)
-git branch --format='%(refname:short)' | grep -v -E '^(main|master)$'
+# The repo's default branch (main, master, develop, trunk, …) — detected, not assumed
+DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+# Fallback 1: check well-known branch names
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/heads/main refs/heads/master refs/heads/trunk refs/heads/develop | head -n1)
+# Fallback 2: use current HEAD (guaranteed as long as we are in a git repo)
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+# Fallback 3: pick the most-recently-committed local branch
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git for-each-ref --sort=-committerdate --format='%(refname:short)' refs/heads | head -n1)
 
-# Branches with worktrees (still in active use)
-git worktree list --porcelain | grep '^branch ' | sed 's|branch refs/heads/||'
+# Guard: if DEFAULT_BRANCH is still empty we cannot safely run merged checks
+if [ -z "$DEFAULT_BRANCH" ]; then
+  echo "Warning: could not determine default branch — merged-check classification will be skipped."
+fi
+
+# The branch currently checked out in the main working tree
+CURRENT_BRANCH=$(git -C "$(git rev-parse --show-toplevel)" branch --show-current)
+
+# Branches checked out in any worktree (these are "in use" — git won't let you delete them anyway)
+git worktree list --porcelain | awk '/^branch / { sub("refs/heads/", "", $2); print $2 }'
 ```
 
-For each local branch that doesn't have a worktree, check:
+Then list candidate local branches, **excluding** the default branch, the current branch, and any branch that has a worktree:
 
-- **Is it merged into `main`?**
+```bash
+git branch --format='%(refname:short)'
+```
+
+Filter that list in your head (or with grep -v) against `$DEFAULT_BRANCH`, `$CURRENT_BRANCH`, and the worktree branches above. **Do not hardcode `main|master`** — many repos use `develop`, `trunk`, or custom default branches, and the user may currently be checked out on a branch that isn't the default.
+
+For each remaining local branch, check:
+
+- **Is it merged into the default branch?**
   ```bash
-  git branch --merged main | grep -w "<branch>"
+  git branch --merged "$DEFAULT_BRANCH" | grep -w "<branch>"
   ```
 - **Was its remote deleted?** (common after merging a PR on GitHub)
   ```bash
@@ -80,8 +102,8 @@ Classify:
 | Status              | Criteria                                                                     |
 | ------------------- | ---------------------------------------------------------------------------- |
 | **Remote deleted**  | Tracked a remote that's gone (PR likely merged and branch deleted on GitHub) |
-| **Merged orphan**   | Merged into main, no worktree, no remote — safe to delete                    |
-| **Unmerged orphan** | Not merged, no worktree, no remote — may be abandoned work                   |
+| **Merged orphan**   | Merged into `$DEFAULT_BRANCH`, no worktree, no remote — safe to delete       |
+| **Unmerged orphan** | Not merged into `$DEFAULT_BRANCH`, no worktree, no remote — may be abandoned work |
 | **Has open PR**     | Skip — still in use                                                          |
 
 ## Step 3 — Present findings
@@ -104,7 +126,7 @@ Branches with deleted remote (PR likely merged on GitHub):
   fix/login-bug          remote gone — safe to delete locally
 
 Orphaned branches (no worktree, no remote):
-  feat/abandoned-idea    merged into main — safe to delete
+  feat/abandoned-idea    merged into $DEFAULT_BRANCH — safe to delete
   fix/half-done          NOT merged — review before deleting
 
 Active worktrees (no action needed):

@@ -54,8 +54,17 @@ Determine which branches must **never** be flagged as orphans:
 ```bash
 # The repo's default branch (main, master, develop, trunk, …) — detected, not assumed
 DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
-# Fallback if origin/HEAD isn't set
+# Fallback 1: check well-known branch names
 [ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/heads/main refs/heads/master refs/heads/trunk refs/heads/develop | head -n1)
+# Fallback 2: use current HEAD (guaranteed as long as we are in a git repo)
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+# Fallback 3: pick the most-recently-committed local branch
+[ -z "$DEFAULT_BRANCH" ] && DEFAULT_BRANCH=$(git for-each-ref --sort=-committerdate --format='%(refname:short)' refs/heads | head -n1)
+
+# Guard: if DEFAULT_BRANCH is still empty we cannot safely run merged checks
+if [ -z "$DEFAULT_BRANCH" ]; then
+  echo "Warning: could not determine default branch — merged-check classification will be skipped."
+fi
 
 # The branch currently checked out in the main working tree
 CURRENT_BRANCH=$(git -C "$(git rev-parse --show-toplevel)" branch --show-current)

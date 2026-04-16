@@ -2,7 +2,7 @@
 
 A standalone, installable toolkit that gives any repo a complete worktree lifecycle for parallel AI-agent development with Claude Code.
 
-[![asciicast](https://asciinema.org/a/<id>.svg)](https://asciinema.org/a/<id>)
+[![asciicast](https://asciinema.org/a/xh73at3HZxKzcaUS.svg)](https://asciinema.org/a/xh73at3HZxKzcaUS)
 
 ## Why
 
@@ -93,7 +93,7 @@ Worktrees are created under `.claude/worktrees/<branch-name>/` inside your repo.
 
 The same branch name always produces the same worktree path and port offset. Running `/wt-open` on an existing branch reopens rather than duplicates.
 
-**Design note: close ordering.** When `/wt-close` removes a worktree _and_ deletes its branch, both commands run with `-C` pointing at the main working tree — not the worktree's own directory. This matters because Claude Code often runs from inside the worktree; removing the worktree first would yank the shell's cwd, causing the subsequent `git branch -d` to fail with "No such file or directory" and leaving the branch orphaned. The worktree must still be removed _before_ the branch delete (git refuses to delete a checked-out branch), so the `-C` flag is what keeps both commands working in sequence.
+**Design note: close ordering.** When `/wt-close` removes a worktree _and_ deletes its branch, both commands must run in a **single Bash call** chained with `&&`. Claude Code resolves the shell's cwd at the start of each Bash invocation — if the session is inside the worktree and you remove it in one call, the _next_ call fails immediately ("No such file or directory") before any command can execute, orphaning the branch. Running `git -C "$MAIN_REPO" worktree remove … && git -C "$MAIN_REPO" branch -d …` in one shell avoids this: cwd is resolved once at launch, and both `git` commands operate from the main repo via `-C`.
 
 ## Local development & testing
 

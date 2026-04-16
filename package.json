@@ -4,7 +4,7 @@
   "description": "Worktree lifecycle toolkit for parallel AI-agent development with Claude Code",
   "type": "module",
   "bin": {
-    "worktree-tools": "./bin/init.js"
+    "worktree-tools": "bin/init.js"
   },
   "files": [
     "bin/",
@@ -24,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ThinkVelta/claude-worktree-tools.git"
+    "url": "git+https://github.com/ThinkVelta/claude-worktree-tools.git"
   },
   "author": "Ruben Broekx <ruben@thinkvelta.ai>"
 }

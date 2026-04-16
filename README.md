@@ -27,7 +27,7 @@ npx @thinkvelta/claude-worktree-tools
 
 This writes `scripts/wt-setup.sh`, the `.claude/skills/wt-*/` skill files, and appends `.claude/worktrees` to your `.gitignore`. Review the changes, then commit them.
 
-**Install flags**
+#### Install flags
 
 | Flag                   | Purpose                                                                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -122,14 +122,14 @@ make ci                      # lint + test
 
 The package is published as [`@thinkvelta/claude-worktree-tools`](https://www.npmjs.com/package/@thinkvelta/claude-worktree-tools) on the public npm registry. Only maintainers with access to the `@thinkvelta` scope can publish.
 
-**One-time setup**
+### One-time setup
 
 ```bash
 npm login                      # authenticate with your npm account
 npm whoami                     # confirm you're logged in
 ```
 
-**Cut a release**
+### Cut a release
 
 1. Make sure `main` is clean and CI is green (`make ci`).
 2. Bump the version — `npm version patch|minor|major` updates `package.json` and creates a git tag.
@@ -150,7 +150,7 @@ npm whoami                     # confirm you're logged in
    npx @thinkvelta/claude-worktree-tools@latest --help
    ```
 
-**Versioning guidance**
+### Versioning guidance
 
 - `patch` — bug fixes, skill wording tweaks, doc changes.
 - `minor` — new skill, new CLI flag, new template file (backwards-compatible).

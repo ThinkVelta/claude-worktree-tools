@@ -20,7 +20,7 @@ Keep answers concise and practical. When relevant, include `code .claude/worktre
 
 **Why it exists.** Switching branches mid-task is disruptive: you stash, rebuild, lose dev server state, and risk polluting one branch's `.env` with another's. Worktrees give each branch its own directory, dependencies, ports, and env — so you (or a Claude agent) can spin up a parallel task without touching what you're already working on. This package automates the boring parts: derived ports, copied env files, dependency installs, cleanup, and merge/close flows.
 
-**Links**
+### Links
 
 - Repo: https://github.com/ThinkVelta/claude-worktree-tools
 - Issues: https://github.com/ThinkVelta/claude-worktree-tools/issues

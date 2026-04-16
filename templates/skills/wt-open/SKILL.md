@@ -104,11 +104,10 @@ Worktree ready!
   Path:    <worktree-path>
   Status:  new | reopened
 
-To start working in this worktree:
-  cd <worktree-path> && claude
-
-Or start coding directly in VSCode:
-  code <worktree-path>
+To start working in this worktree, navigate to it and launch a Claude Code session or open in VSCode:
+  cd <worktree-path>
+  claude  # Starts a Claude Code session in this worktree
+  code  # Opens the worktree in a new VSCode window
 ```
 
 ## Design principles

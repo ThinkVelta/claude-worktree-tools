@@ -1,15 +1,10 @@
 ---
 name: commit
 description: Cluster changes into logical commits and create Conventional Commits. Invoke with `/commit` or `/commit <message>`.
-metadata:
-  context: fork
-  agent: commit
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-  argument-hint: "[commit message]"
+allowed-tools: Bash Read Glob Grep
+argument-hint: "[commit message]"
+context: fork
+agent: commit
 ---
 
 Cluster all pending changes into logical groups and create a separate Conventional Commit for each group. Execute immediately — do NOT propose or ask for confirmation.

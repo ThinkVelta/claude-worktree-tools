@@ -78,7 +78,7 @@ The installer writes the following files and appends `.claude/worktrees` to your
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 20
 - Git
 - Unix-like environment (macOS, Linux, or WSL on Windows)
 - [GitHub CLI](https://cli.github.com/) (`gh`) — optional, used by `/wt-merge` for PR creation

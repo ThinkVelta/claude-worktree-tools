@@ -104,7 +104,10 @@ FRONTEND_PORT=$((3000 + PORT_OFFSET))
 
 update_env_var() {
   local file="$1" key="$2" val="$3"
-  [[ -f "$file" ]] || return 0
+  if [[ ! -f "$file" ]]; then
+    warn "Skipping ${key}: ${file} does not exist"
+    return 0
+  fi
   if grep -q "^${key}=" "$file" 2>/dev/null; then
     sed -i.bak "s|^${key}=.*|${key}=${val}|" "$file" && rm -f "${file}.bak"
   else
@@ -172,7 +175,7 @@ If the chosen command prompts, prefer one of:
 
 1. **Fall through to a non-interactive subcommand.** Many `setup` targets are thin wrappers around `install-deps` + something interactive (e.g., `supabase login`, `git config`). Wire the install-only subtarget directly: `make backend-setup` instead of `make prepare`, `npm run install-deps` instead of `npm run setup`.
 2. **Pass non-interactive flags.** `--yes`, `--non-interactive`, `--no-input`, `CI=1`, `DEBIAN_FRONTEND=noninteractive`.
-3. **Pipe a default.** `yes "" | <command>` or `<command> < /dev/null` if the prompts are skippable.
+3. **Pipe a default.** `printf '\n' | <command>` (single prompt) or `<command> < /dev/null` (EOF-skippable prompts). Avoid `yes "" | <command>` — under `set -euo pipefail`, `yes` exits with SIGPIPE when the command stops reading, making the whole pipeline fail even when `<command>` succeeds.
 
 If none of those work, leave the interactive step out of `wt-setup.sh` and surface it as a `[SUGGEST]` in the health check so the user runs it manually after the worktree is created.
 

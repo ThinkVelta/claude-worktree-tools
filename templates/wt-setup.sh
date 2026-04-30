@@ -214,7 +214,10 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 #
 #   update_env_var() {
 #     local file="$1" key="$2" val="$3"
-#     [[ -f "$file" ]] || return 0
+#     if [[ ! -f "$file" ]]; then
+#       warn "Skipping ${key}: ${file} does not exist"
+#       return 0
+#     fi
 #     if grep -q "^${key}=" "$file" 2>/dev/null; then
 #       sed -i.bak "s|^${key}=.*|${key}=${val}|" "$file" && rm -f "${file}.bak"
 #     else

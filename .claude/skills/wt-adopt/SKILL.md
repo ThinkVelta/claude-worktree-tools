@@ -77,9 +77,25 @@ Read the existing `scripts/wt-setup.sh`. If it does not exist, tell the user to 
 
 ### Update the REPO-SPECIFIC PORT CONFIG section
 
-Based on the ports found in Phase 1, uncomment and fill in the port config section.
+**Do not blindly introduce `*_PORT` variables.** First analyze how the repo already encodes ports in its environment. The right pattern depends on what already exists — pick one that matches, don't add a parallel system.
 
-Example for a Next.js + FastAPI project:
+#### Step 1 — Classify each port-bearing env var
+
+For each port found in Phase 1, identify which env var carries it. There are three common shapes:
+
+| Shape                    | Example                              | What to do                                                                                                |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| **URL-embedded**         | `BACKEND_URL=http://localhost:8000`  | Rewrite the URL with the new port. Don't introduce a separate `BACKEND_PORT` — that would be duplicative. |
+| **Bare port var**        | `PORT=8000` or `BACKEND_PORT=8000`   | Rewrite the port var directly. This is the simplest case.                                                 |
+| **Both, with port var as source** | `PORT=8000` + `URL=http://localhost:${PORT}` | Rewrite only the bare port var; the URL resolves at read time. |
+
+If a URL is the source of truth (the app reads the URL and parses the port out of it), changing only a `PORT` var does nothing — the app will still hit the wrong port. Always trace which variable is actually consumed.
+
+Also identify any **derived vars** that must be kept consistent: `CORS_ALLOWED_ORIGINS`, redirect URLs, OAuth callback URLs, email confirmation links — these often hardcode the same host:port and need rewriting too.
+
+#### Step 2 — Pick a pattern and fill in the section
+
+**Pattern A — Bare port vars (simple).** Use when the repo's `.env.example` exposes ports as standalone variables.
 
 ```bash
 # === REPO-SPECIFIC PORT CONFIG (filled in by /wt-adopt) ===
@@ -88,6 +104,10 @@ FRONTEND_PORT=$((3000 + PORT_OFFSET))
 
 update_env_var() {
   local file="$1" key="$2" val="$3"
+  if [[ ! -f "$file" ]]; then
+    warn "Skipping ${key}: ${file} does not exist"
+    return 0
+  fi
   if grep -q "^${key}=" "$file" 2>/dev/null; then
     sed -i.bak "s|^${key}=.*|${key}=${val}|" "$file" && rm -f "${file}.bak"
   else
@@ -95,13 +115,32 @@ update_env_var() {
   fi
 }
 
-update_env_var "${WORKTREE_DIR}/.env" PORT "$BACKEND_PORT"
+update_env_var "${WORKTREE_DIR}/.env" BACKEND_PORT "$BACKEND_PORT"
 update_env_var "${WORKTREE_DIR}/.env" FRONTEND_PORT "$FRONTEND_PORT"
 
 info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
 ```
 
-Use the actual variable names and ports found in the repo's `.env.example` or configuration files.
+**Pattern B — URL-embedded ports.** Use when the repo already has `BACKEND_URL` / `FRONTEND_URL` (or similar) as the source of truth. Rewrite the URLs, plus any derived vars (CORS, callbacks).
+
+```bash
+# === REPO-SPECIFIC PORT CONFIG (filled in by /wt-adopt) ===
+# BACKEND_URL and FRONTEND_URL are the source of truth — the app parses
+# the port out of them. Rewrite both URLs, plus CORS_ALLOWED_ORIGINS so
+# the worktree's frontend can talk to its own backend.
+BACKEND_PORT=$((8000 + PORT_OFFSET))
+FRONTEND_PORT=$((3000 + PORT_OFFSET))
+
+update_env_var() { ... }  # same helper as above
+
+update_env_var "${WORKTREE_DIR}/.env" BACKEND_URL "http://localhost:${BACKEND_PORT}"
+update_env_var "${WORKTREE_DIR}/.env" FRONTEND_URL "http://localhost:${FRONTEND_PORT}"
+update_env_var "${WORKTREE_DIR}/.env" CORS_ALLOWED_ORIGINS "http://localhost:${FRONTEND_PORT}"
+
+info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
+```
+
+**Hybrid:** mix patterns when each service uses a different shape (e.g., backend has `PORT=`, frontend has `FRONTEND_URL=`). Use the actual variable names from the repo — never invent ones that don't already exist.
 
 ### Update the REPO-SPECIFIC INSTALL section
 
@@ -120,6 +159,25 @@ Based on the detected package manager, uncomment and fill in the install section
 | Makefile with `setup` target | `make -C "${WORKTREE_DIR}" setup`                           |
 
 For monorepos, chain multiple install commands.
+
+#### Watch for interactive prompts
+
+`wt-setup.sh` runs unattended — any command that prompts for input will hang the worktree creation. Before wiring an install/setup command in, check whether it prompts. This is **stack-agnostic**: it can happen with Make targets, npm scripts, Python entrypoints, or shell scripts.
+
+| Toolchain         | Look for                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| Shell / Make      | `read -p`, `read -r` without `< /dev/null`, `gum input`, `whiptail`, `dialog`         |
+| npm / package.json `scripts` | Scripts that delegate to interactive CLIs (`prisma init`, `vercel login`, etc.) |
+| Python            | `input(`, `click.prompt`, `inquirer.prompt`, `rich.prompt.Prompt`                     |
+| Setup wrappers    | A top-level `setup` / `prepare` / `bootstrap` target that wraps a non-interactive one |
+
+If the chosen command prompts, prefer one of:
+
+1. **Fall through to a non-interactive subcommand.** Many `setup` targets are thin wrappers around `install-deps` + something interactive (e.g., `supabase login`, `git config`). Wire the install-only subtarget directly: `make backend-setup` instead of `make prepare`, `npm run install-deps` instead of `npm run setup`.
+2. **Pass non-interactive flags.** `--yes`, `--non-interactive`, `--no-input`, `CI=1`, `DEBIAN_FRONTEND=noninteractive`.
+3. **Pipe a default.** `printf '\n' | <command>` (single prompt) or `<command> < /dev/null` (EOF-skippable prompts). Avoid `yes "" | <command>` — under `set -euo pipefail`, `yes` exits with SIGPIPE when the command stops reading, making the whole pipeline fail even when `<command>` succeeds.
+
+If none of those work, leave the interactive step out of `wt-setup.sh` and surface it as a `[SUGGEST]` in the health check so the user runs it manually after the worktree is created.
 
 ### Preserve other sections
 

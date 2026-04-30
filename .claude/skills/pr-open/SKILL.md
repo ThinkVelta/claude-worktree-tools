@@ -1,15 +1,9 @@
 ---
 name: pr-open
 description: Create a pull request for the current branch. Analyzes all commits, runs validation, and opens a well-formatted PR on GitHub. Always targets `main`. Invoke with `/pr-open`.
-metadata:
-  context: fork
-  agent: pr-open
-  allowed_tools:
-    - Bash
-    - Read
-    - Glob
-    - Grep
-    - mcp__plugin_linear_linear
+allowed-tools: Bash Read Glob Grep mcp__plugin_linear_linear
+context: fork
+agent: pr-open
 ---
 
 Create a pull request for the current branch targeting `main`.

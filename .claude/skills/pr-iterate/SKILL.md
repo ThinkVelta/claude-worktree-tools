@@ -1,16 +1,9 @@
 ---
 name: pr-iterate
 description: Address the latest review feedback on the current branch's open PR. Fetches comments, triages relevance, implements fixes or replies with reasoning, then commits.
-metadata:
-  context: fork
-  agent: pr-iterate
-  allowed_tools:
-    - Bash
-    - Read
-    - Write
-    - Edit
-    - Glob
-    - Grep
+allowed-tools: Bash Read Write Edit Glob Grep
+context: fork
+agent: pr-iterate
 ---
 
 Iterate on the open pull request for the current branch.

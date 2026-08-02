@@ -1,52 +1,33 @@
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
 
-# Copier
-*.rej
-
-# Data (local datasets, exports, uploads)
-data/
-*.csv
-*.dat
-*.pickle
-*.xls*
-*.sqlite*
+# Node
+node_modules/
+npm-debug.log*
+# `npm pack` drops a tarball in the repo root (see README, "Publishing").
+*.tgz
 
 # dotenv — ignore all .env variants except the example template
 .env*
 !.env.example
 
-# IDE
+# Editors
+# .vscode/ is deliberately NOT ignored: settings.json and extensions.json are
+# shared editor config and are committed. Same for .editorconfig.
 .idea/
 
-# Node
-node_modules/
-
-# Python
-__pycache__/
-*.py[cdo]
-*.egg-info/
-.venv/
-dist/
-
-# Ruff
-.ruff_cache/
-
-# Build artifacts
-build/
-.next/
-out/
-
-# Coverage
-htmlcov/
-.coverage
-coverage.xml
-
-# Experiments
-scripts/output/
-
-# Test artifacts
+# Test artifacts — test.sh writes generated repos here (`make test` -> tmp/test-make)
 tmp/
 
-# Worktrees
+# Claude Code — machine-local state only. Shared config IS committed:
+# .claude/settings.json, hooks/, rules/, skills/, agents/, and README.md.
+.claude/settings.local.json
+.claude/agent-memory/
+.claude/*.lock
+# Must stay slash-less: bin/init.js matches this line EXACTLY
+# (`line.trim() === ".claude/worktrees"`), so a trailing slash would make the
+# installer append a duplicate every time this repo is used on itself.
 .claude/worktrees

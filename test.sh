@@ -281,6 +281,51 @@ for skill in wt-open wt-close wt-cleanup wt-help wt-list wt-merge wt-adopt; do
 done
 
 # ---------------------------------------------------------------------------
+# Test 12: worktree path derivation agrees between the script and the skills
+# ---------------------------------------------------------------------------
+
+section "Test 12 — worktree path derivation is consistent"
+
+# The setup script is the single source of truth for where a worktree lands.
+# A skill that documents a different derivation sends the agent to a directory
+# that does not exist (NATIVE-44), so assert the two cannot drift apart.
+
+SETUP_TPL="${SCRIPT_DIR}/templates/wt-setup.sh"
+
+# These patterns are grep needles matched against file CONTENT, so the `$` in
+# them must stay literal. Single quotes are what keeps the shell out of them.
+# shellcheck disable=SC2016
+HASHED_DIR='worktrees/${SAFE_BRANCH}-${BRANCH_HASH}'
+# shellcheck disable=SC2016
+PRINTF_HASH='BRANCH_HASH="$(printf'
+# shellcheck disable=SC2016
+ECHO_DERIVE='SAFE_BRANCH="$(echo'
+
+check_eval "wt-setup.sh derives the path with a branch hash" \
+  "grep -qF '$HASHED_DIR' '$SETUP_TPL'"
+
+check_eval "wt-setup.sh hashes with printf, not echo" \
+  "grep -qF '$PRINTF_HASH' '$SETUP_TPL'"
+
+# Any skill that spells out WORKTREE_DIR must derive it the same way, or it
+# sends the agent to a directory the script never created.
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  if grep -qF 'WORKTREE_DIR=' "$tpl" 2>/dev/null; then
+    if grep -qF "$HASHED_DIR" "$tpl"; then
+      pass "${skill}: documented path derivation includes the branch hash"
+    else
+      fail "${skill}: documents WORKTREE_DIR without the branch-hash suffix"
+    fi
+    if grep -qF "$ECHO_DERIVE" "$tpl"; then
+      fail "${skill}: derives SAFE_BRANCH with echo (adds a newline; changes the cksum)"
+    else
+      pass "${skill}: does not hash through echo"
+    fi
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

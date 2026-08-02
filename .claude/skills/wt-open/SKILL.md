@@ -47,15 +47,33 @@ Run:
 git worktree list --porcelain
 ```
 
-Derive the expected worktree directory:
+**Ask git whether this branch already has a worktree** — don't guess from the path. Git is the
+authority, and this stays correct no matter how the directory is named:
+
+```bash
+EXISTING_WT="$(git worktree list --porcelain | awk -v b="refs/heads/<branch-name>" '
+    /^worktree / { wt = substr($0, 10) }
+    /^branch /   { if ($2 == b) print wt }
+  ')"
+```
+
+If `EXISTING_WT` is non-empty, that is the worktree path — use it as-is.
+
+Only when there is no existing worktree do you need the **expected** path, e.g. to tell the user
+where the new one will land. Derive it exactly as `scripts/wt-setup.sh` does:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-SAFE_BRANCH="$(echo "<branch-name>" | tr '/' '-')"
-WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}"
+SAFE_BRANCH="$(printf '%s' "<branch-name>" | tr '/' '-')"
+BRANCH_HASH="$(printf '%s' "<branch-name>" | cksum | awk '{printf "%08x", $1}')"
+WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}-${BRANCH_HASH}"
 ```
 
-**If the worktree directory exists and is valid** (has a `.git` file):
+The `-${BRANCH_HASH}` suffix is **not optional** — it is what keeps `feat/a/b` and `feat-a-b` from
+colliding after slashes are flattened. And it must be `printf '%s'`, never `echo`: `echo` appends a
+newline, which changes the `cksum` and yields a different directory than the script creates.
+
+**If a worktree already exists for the branch** (`EXISTING_WT` non-empty):
 
 - This is a **reopen**. Run setup with `--reopen` flag (Step 4).
 
@@ -94,6 +112,10 @@ bash "$(git rev-parse --show-toplevel)/scripts/wt-setup.sh" "<branch-name>" --re
 ```
 
 ## Step 5 — Print result and next steps
+
+The setup script ends with a summary that includes a `Path:` line. **Use that path** — it is the
+directory git actually created. Never re-derive it here or hand the user a path you computed
+yourself; if the two ever disagree, the script is right.
 
 After the setup script completes, print:
 

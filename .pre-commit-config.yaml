@@ -1,0 +1,86 @@
+# https://pre-commit.com
+#
+# What the harness covers for this repo: the shipped bash (shellcheck + shfmt),
+# markdown style across the docs AND the skill templates we publish, workflow
+# correctness (actionlint), file hygiene, and Conventional Commits (commitizen).
+# Every linter is pinned by its rev below; run it via `make lint` / `make
+# prepare` (see Makefile).
+#
+# This repo has NO Python source. uv/uvx appear only as the delivery mechanism
+# for pre-commit itself (see the Makefile) — hence no ruff hook. Every hook
+# builds its own isolated environment, so none of this leaks into package.json:
+# the published package stays dependency-free.
+
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Keep markdown hard line breaks (two trailing spaces) intact, matching
+        # the `[*.md]` stanza in .editorconfig.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        # .vscode/ files are JSONC (comments allowed), which strict JSON
+        # parsing rejects.
+        exclude: ^\.vscode/
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      # markdownlint-cli2, not markdownlint-cli: the two ship different
+      # markdownlint cores and disagree about which rules exist (MD060 is
+      # absent from the cli build), so a repo that lints with one and reads
+      # `.markdownlint.yaml` in an editor running the other gets green locally
+      # and red in CI. One binary, pinned, everywhere.
+      #
+      # Deliberately NOT excluding .claude/skills/ or templates/skills/. A
+      # rewriting hook fenced off from one copy but not the other would fix
+      # only one side and break the byte-identity invariant that test.sh
+      # asserts — any exclude here must be symmetric across both trees, or
+      # absent. Absent is correct: templates/skills/** is the shipped product,
+      # so published markdown gets linted.
+      - id: markdownlint-cli2
+        args: [--fix]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      # shellcheck via a prebuilt wheel: no Haskell toolchain and no Docker
+      # daemon needed, unlike koalaman/shellcheck-precommit. Covers all five
+      # shell scripts, not just the one the old CI step named.
+      - id: shellcheck
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+        # No --space-redirects: templates/wt-setup.sh ships into users' repos
+        # and is hand-edited there, and `2>/dev/null` is the convention its
+        # readers expect.
+        args: [--write, --indent, "2", --case-indent]
+        # .claude/hooks/ scripts are ported verbatim from their upstream
+        # source; a rewrite here would break the near-byte diffability that
+        # keeps future syncs reviewable. shellcheck still checks them — only
+        # the rewriting hook is fenced off.
+        exclude: ^\.claude/hooks/
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.4.1
+    hooks:
+      # Enforces the Conventional Commits rule from .claude/rules/general.md at
+      # the commit-msg stage, so the rule is checked rather than merely written
+      # down.
+      - id: commitizen
+        stages: [commit-msg]

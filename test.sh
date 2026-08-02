@@ -109,7 +109,7 @@ check_eval "wt-setup.sh has shebang" "head -1 '$TARGET_DIR/scripts/wt-setup.sh' 
 
 section "Test 2 — Idempotency (skip existing)"
 
-OUTPUT=$( (cd "$TARGET_DIR" && node "$INIT_JS") 2>&1 )
+OUTPUT=$( (cd "$TARGET_DIR" && node "$INIT_JS") 2>&1)
 
 if echo "$OUTPUT" | grep -q "skip"; then
   pass "Second run skips existing files"
@@ -129,7 +129,7 @@ fi
 
 section "Test 3 — --force flag"
 
-OUTPUT=$( (cd "$TARGET_DIR" && node "$INIT_JS" --force) 2>&1 )
+OUTPUT=$( (cd "$TARGET_DIR" && node "$INIT_JS" --force) 2>&1)
 
 if echo "$OUTPUT" | grep -q "overwrite"; then
   pass "--force overwrites files"
@@ -151,7 +151,7 @@ git -C "$DRY_RUN_DIR" config user.name "claude-worktree-tools test"
 git -C "$DRY_RUN_DIR" config user.email "test@example.invalid"
 git -C "$DRY_RUN_DIR" commit --allow-empty -m "initial commit" --quiet
 
-OUTPUT=$( (cd "$DRY_RUN_DIR" && node "$INIT_JS" --dry-run) 2>&1 )
+OUTPUT=$( (cd "$DRY_RUN_DIR" && node "$INIT_JS" --dry-run) 2>&1)
 
 if echo "$OUTPUT" | grep -q "dry run"; then
   pass "--dry-run prints actions"
@@ -188,7 +188,7 @@ section "Test 6 — Not a git repo"
 # Use a truly non-git directory (not inside any git repo)
 NONGIT_DIR="$(mktemp -d)"
 
-OUTPUT=$( (cd "$NONGIT_DIR" && node "$INIT_JS") 2>&1 || true )
+OUTPUT=$( (cd "$NONGIT_DIR" && node "$INIT_JS") 2>&1 || true)
 
 if echo "$OUTPUT" | grep -q "Not a git repository"; then
   pass "Rejects non-git directory"

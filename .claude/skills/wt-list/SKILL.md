@@ -73,7 +73,7 @@ Compare the commit timestamp to now. Flag as **stale** if the last commit is **3
 
 Present each worktree as a block, for example:
 
-```
+```text
 Active worktrees:
 
   main (main working tree)

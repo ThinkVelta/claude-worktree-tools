@@ -1,26 +1,53 @@
-# markdownlint configuration
-# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+# Markdown lint configuration for claude-worktree-tools. Read by pre-commit's
+# markdownlint-cli2 hook (`make lint`, and CI through it) and by the markdownlint
+# editor extension alike, so the same rules squiggle in the editor and gate the
+# merge.
 
-# Allow long lines (skill templates have tables and code blocks)
+# Disable line length limit: prose doesn't wrap at fixed widths, and the skill
+# templates carry wide tables and long single-line instructions.
 MD013: false
 
-# Allow duplicate headings (different files may reuse heading names)
-MD024: false
+# Allow duplicate headings in different sections
+MD024:
+  siblings_only: true
 
-# Allow inline HTML
-MD033: false
+# Allow trailing punctuation in headings (e.g., "What is X?")
+MD026: false
 
-# Allow bare URLs
+# Allow blank lines inside blockquotes
+MD028: false
+
+# Allow emphasis used instead of a heading
+MD036: false
+
+# Don't require the first line to be a top-level heading (skill files and agent
+# playbooks carry YAML frontmatter ahead of the H1)
+MD041: false
+
+# Unordered list style
+MD004:
+  style: "dash"
+
+# Ordered list style: items increment (`1.` `2.` `3.`). The numbering in
+# step-by-step docs is load-bearing (steps get cited by number), and `one`
+# would force renumbering prose that already increments.
+MD029:
+  style: "ordered"
+
+# Allow bare URLs: angle-bracket wrapping is visual noise in table cells and
+# every renderer in use autolinks them anyway.
 MD034: false
 
-# Relax blanks-around-fences (numbered list items with code blocks)
-MD031: false
-
-# Relax blanks-around-lists (bold items used as headers in lists)
-MD032: false
-
-# Allow code blocks without language specifier (example output blocks)
-MD040: false
-
-# Relax table column style (compact tables are fine)
-MD060: false
+# Inline HTML is an allowlist, not a free-for-all. This repo writes agent-facing
+# placeholders as `<branch>` / `<path>` / `<worktree-path>`; when one is written
+# outside a code span it parses as an HTML tag and silently VANISHES from the
+# rendered skill file — MD033 is the only rule that catches that. The allowed
+# elements are the ones a README needs and Markdown cannot express.
+MD033:
+  allowed_elements:
+    - div
+    - img
+    - details
+    - summary
+    # Markdown emphasis is not reliably parsed inside a <summary>.
+    - strong

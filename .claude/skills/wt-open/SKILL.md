@@ -97,7 +97,7 @@ bash "$(git rev-parse --show-toplevel)/scripts/wt-setup.sh" "<branch-name>" --re
 
 After the setup script completes, print:
 
-```
+```text
 Worktree ready!
 
   Branch:  <branch-name>

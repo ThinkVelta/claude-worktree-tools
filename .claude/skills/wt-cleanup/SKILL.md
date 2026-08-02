@@ -25,10 +25,13 @@ For each worktree (excluding the main working tree), gather:
 - **Branch name**
 - **Path on disk** — verify the directory still exists
 - **Last commit date:**
+
   ```bash
   git -C "<path>" log -1 --format="%ct" 2>/dev/null
   ```
+
 - **Dirty/clean status:**
+
   ```bash
   git -C "<path>" status --porcelain 2>/dev/null | wc -l | tr -d ' '
   ```
@@ -84,33 +87,38 @@ Filter that list in your head (or with grep -v) against `$DEFAULT_BRANCH`, `$CUR
 For each remaining local branch, check:
 
 - **Is it merged into the default branch?**
+
   ```bash
   git branch --merged "$DEFAULT_BRANCH" | grep -w "<branch>"
   ```
+
 - **Was its remote deleted?** (common after merging a PR on GitHub)
+
   ```bash
   git branch -vv --format='%(refname:short) %(upstream:track)' | grep '\[gone\]'
   ```
+
   The `[gone]` marker means the branch once tracked a remote that no longer exists — a strong signal the PR was merged and the remote branch deleted.
 - **Does it have an open PR?** (if `gh` is available)
+
   ```bash
   gh pr list --head "<branch>" --state open --json number 2>/dev/null
   ```
 
 Classify:
 
-| Status              | Criteria                                                                     |
-| ------------------- | ---------------------------------------------------------------------------- |
-| **Remote deleted**  | Tracked a remote that's gone (PR likely merged and branch deleted on GitHub) |
-| **Merged orphan**   | Merged into `$DEFAULT_BRANCH`, no worktree, no remote — safe to delete       |
+| Status              | Criteria                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- |
+| **Remote deleted**  | Tracked a remote that's gone (PR likely merged and branch deleted on GitHub)      |
+| **Merged orphan**   | Merged into `$DEFAULT_BRANCH`, no worktree, no remote — safe to delete            |
 | **Unmerged orphan** | Not merged into `$DEFAULT_BRANCH`, no worktree, no remote — may be abandoned work |
-| **Has open PR**     | Skip — still in use                                                          |
+| **Has open PR**     | Skip — still in use                                                               |
 
 ## Step 3 — Present findings
 
 Show a summary grouped by action:
 
-```
+```text
 Worktree Cleanup Report
 ═══════════════════════
 
@@ -164,7 +172,7 @@ git branch -d "<branch>"
 
 Print a summary of what was done:
 
-```
+```text
 Cleanup complete:
   2 stale worktrees removed
   1 missing worktree pruned

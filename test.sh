@@ -288,40 +288,44 @@ section "Test 12 — worktree path derivation is consistent"
 
 # The setup script is the single source of truth for where a worktree lands.
 # A skill that documents a different derivation sends the agent to a directory
-# that does not exist (NATIVE-44), so assert the two cannot drift apart.
+# that was never created, so assert the two cannot drift apart.
 
-SETUP_TPL="${SCRIPT_DIR}/templates/wt-setup.sh"
+# Substring checks would not be enough here: `printf '%s\n'` contains `printf`
+# but hashes a trailing newline, and a skill can name ${BRANCH_HASH} without
+# ever defining it. So RUN the derivation each skill documents and compare the
+# directory name it produces against the one Test 8 watched wt-setup.sh create.
+#
+# `eval` on file content is normally a smell; here the input is a tracked file
+# in this repo and running it is the only way to test what it actually computes.
 
-# These patterns are grep needles matched against file CONTENT, so the `$` in
-# them must stay literal. Single quotes are what keeps the shell out of them.
-# shellcheck disable=SC2016
-HASHED_DIR='worktrees/${SAFE_BRANCH}-${BRANCH_HASH}'
-# shellcheck disable=SC2016
-PRINTF_HASH='BRANCH_HASH="$(printf'
-# shellcheck disable=SC2016
-ECHO_DERIVE='SAFE_BRANCH="$(echo'
-
-check_eval "wt-setup.sh derives the path with a branch hash" \
-  "grep -qF '$HASHED_DIR' '$SETUP_TPL'"
-
-check_eval "wt-setup.sh hashes with printf, not echo" \
-  "grep -qF '$PRINTF_HASH' '$SETUP_TPL'"
-
-# Any skill that spells out WORKTREE_DIR must derive it the same way, or it
-# sends the agent to a directory the script never created.
 for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
   skill="$(basename "$(dirname "$tpl")")"
-  if grep -qF 'WORKTREE_DIR=' "$tpl" 2>/dev/null; then
-    if grep -qF "$HASHED_DIR" "$tpl"; then
-      pass "${skill}: documented path derivation includes the branch hash"
-    else
-      fail "${skill}: documents WORKTREE_DIR without the branch-hash suffix"
-    fi
-    if grep -qF "$ECHO_DERIVE" "$tpl"; then
-      fail "${skill}: derives SAFE_BRANCH with echo (adds a newline; changes the cksum)"
-    else
-      pass "${skill}: does not hash through echo"
-    fi
+  grep -qF 'WORKTREE_DIR=' "$tpl" 2>/dev/null || continue
+
+  # Pull the assignment lines out of the fenced block and bind them to the same
+  # branch name Test 8 used.
+  derivation="$(grep -E '^(SAFE_BRANCH|BRANCH_HASH|WORKTREE_DIR)=' "$tpl" | sed "s|<branch-name>|${TEST_BRANCH}|g")"
+
+  if [[ -z "$derivation" ]]; then
+    fail "${skill}: mentions WORKTREE_DIR but documents no derivation to check"
+    continue
+  fi
+
+  # Run it once against a known REPO_ROOT and report the full path it computes.
+  # `WORKTREE_DIR=` starts empty so a derivation that never assigns it, or that
+  # references an undefined ${BRANCH_HASH}, yields something that cannot match.
+  documented_path="$(
+    # shellcheck disable=SC2034  # both are read by the eval'd derivation
+    REPO_ROOT="/repo"
+    WORKTREE_DIR=""
+    eval "$derivation" >/dev/null 2>&1
+    printf '%s' "$WORKTREE_DIR"
+  )"
+
+  if [[ "$documented_path" == "/repo/.claude/worktrees/${TEST_BRANCH_DIR}" ]]; then
+    pass "${skill}: documented derivation produces the path wt-setup.sh creates"
+  else
+    fail "${skill}: documented derivation gives '${documented_path}', expected '/repo/.claude/worktrees/${TEST_BRANCH_DIR}'"
   fi
 done
 

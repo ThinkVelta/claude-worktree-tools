@@ -41,26 +41,9 @@ Otherwise, default to the current branch. If the current branch looks like a fea
 
 ## Step 3 — Check if this worktree already exists
 
-Run:
-
-```bash
-git worktree list --porcelain
-```
-
-**Ask git whether this branch already has a worktree** — don't guess from the path. Git is the
-authority, and this stays correct no matter how the directory is named:
-
-```bash
-EXISTING_WT="$(git worktree list --porcelain | awk -v b="refs/heads/<branch-name>" '
-    /^worktree / { wt = substr($0, 10) }
-    /^branch /   { if ($2 == b) print wt }
-  ')"
-```
-
-If `EXISTING_WT` is non-empty, that is the worktree path — use it as-is.
-
-Only when there is no existing worktree do you need the **expected** path, e.g. to tell the user
-where the new one will land. Derive it exactly as `scripts/wt-setup.sh` does:
+First derive the **canonical** worktree directory, exactly as `scripts/wt-setup.sh` does. This is
+the only path `--reopen` will accept, so it — not `git worktree list` — is what decides whether a
+reopen is possible:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -69,21 +52,47 @@ BRANCH_HASH="$(printf '%s' "<branch-name>" | cksum | awk '{printf "%08x", $1}')"
 WORKTREE_DIR="${REPO_ROOT}/.claude/worktrees/${SAFE_BRANCH}-${BRANCH_HASH}"
 ```
 
-The `-${BRANCH_HASH}` suffix is **not optional** — it is what keeps `feat/a/b` and `feat-a-b` from
-colliding after slashes are flattened. And it must be `printf '%s'`, never `echo`: `echo` appends a
-newline, which changes the `cksum` and yields a different directory than the script creates.
+Two things about this are load-bearing:
 
-**If a worktree already exists for the branch** (`EXISTING_WT` non-empty):
+- The `-${BRANCH_HASH}` suffix is **not optional**. It is what keeps `feat/a/b` and `feat-a-b` from
+  colliding once slashes are flattened to hyphens.
+- The hash must be fed by `printf '%s'`, **never `echo`**. `echo` appends a newline and `cksum`
+  hashes it, giving a different digest — and unlike the `SAFE_BRANCH` line, command substitution
+  cannot strip that newline, because `cksum` has already consumed it.
 
-- This is a **reopen**. Run setup with `--reopen` flag (Step 4).
+Then ask git where the branch is actually checked out, if anywhere. Git is authoritative about
+that, and a branch can only be checked out in one worktree at a time:
 
-**If the branch exists but has no worktree**:
+```bash
+EXISTING_WT="$(git worktree list --porcelain | awk -v b="refs/heads/<branch-name>" '
+    /^worktree / { wt = substr($0, 10) }
+    /^branch /   { if ($2 == b) print wt }
+  ')"
+```
 
-- Create a new worktree for the existing branch (Step 4).
+Classify from **both** answers:
 
-**If neither exists**:
+**`EXISTING_WT` equals `$WORKTREE_DIR`** — the managed worktree is already there.
 
-- Create both the branch and worktree (Step 4).
+- This is a **reopen**. Run setup with `--reopen` (Step 4).
+
+**`EXISTING_WT` is non-empty but is some other path** — the branch is checked out somewhere this
+skill does not manage: the main working tree (you are on that branch right now), or a worktree
+someone created by hand.
+
+- **Stop.** Do not pass `--reopen`: the script validates only its own canonical path and would die
+  with a confusing "Cannot reopen: … no .git entry found" pointing at a directory that never
+  existed. Do not try to create one either — git refuses to check a branch out twice.
+- Tell the user where it is and let them choose:
+
+  > `<branch-name>` is already checked out in `$EXISTING_WT`, which isn't a managed worktree.
+  > Work there directly, or switch that checkout to another branch first and rerun `/wt-open`.
+
+**`EXISTING_WT` is empty** — no worktree holds this branch.
+
+- Create one (Step 4), whether or not the branch itself already exists. If a stale
+  `$WORKTREE_DIR` directory is left over from a deleted worktree, the setup script prunes it.
+  The script creates the branch too when it does not exist yet.
 
 ## Step 4 — Run the setup script
 

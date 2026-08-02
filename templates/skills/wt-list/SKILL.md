@@ -81,17 +81,17 @@ Active worktrees:
     Clean | Last commit: 1h ago "update deps"
 
   feat/auth
-    .claude/worktrees/feat-auth
+    .claude/worktrees/feat-auth-02c1dcbe
     Clean | 2 ahead | Last commit: 2h ago "add JWT validation"
     Ports: offset 17
 
   feat/billing
-    .claude/worktrees/feat-billing
+    .claude/worktrees/feat-billing-d05a5f5d
     1 modified file | 0 ahead | Last commit: 20m ago "wip: invoice model"
     Ports: offset 42
 
   fix/typo-header
-    .claude/worktrees/fix-typo-header
+    .claude/worktrees/fix-typo-header-d5a403e6
     Clean | 1 ahead | Last commit: 3d ago "fix typo in header"
     Ports: offset 91
     ⚠ Stale (no commits in 3+ days)

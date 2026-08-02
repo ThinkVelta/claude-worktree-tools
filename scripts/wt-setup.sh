@@ -72,8 +72,8 @@ done
 # Derived paths
 # ---------------------------------------------------------------------------
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
-  || die "Not inside a git repository"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" ||
+  die "Not inside a git repository"
 
 # Convert slashes to hyphens for a human-readable prefix, then append a short
 # hash of the original branch name to prevent collisions between branches that
@@ -89,8 +89,8 @@ if [[ -z "$BASE_BRANCH" ]]; then
   elif git show-ref --verify --quiet refs/heads/master 2>/dev/null; then
     BASE_BRANCH="master"
   else
-    BASE_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" \
-      || die "Cannot determine default base branch"
+    BASE_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" ||
+      die "Cannot determine default base branch"
   fi
 fi
 
@@ -108,13 +108,13 @@ else
   # --- Pre-checks -----------------------------------------------------------
 
   # Verify base branch exists.
-  git show-ref --verify --quiet "refs/heads/${BASE_BRANCH}" 2>/dev/null \
-    || die "Base branch '${BASE_BRANCH}' does not exist locally"
+  git show-ref --verify --quiet "refs/heads/${BASE_BRANCH}" 2>/dev/null ||
+    die "Base branch '${BASE_BRANCH}' does not exist locally"
 
   # Check whether the branch is already checked out in another worktree.
   CHECKED_OUT_IN="$(
-    git worktree list --porcelain \
-      | awk -v branch="refs/heads/${BRANCH_NAME}" '
+    git worktree list --porcelain |
+      awk -v branch="refs/heads/${BRANCH_NAME}" '
           /^worktree / { wt = substr($0, 10) }
           /^branch /   { if ($2 == branch) print wt }
         '
@@ -198,7 +198,6 @@ PORT_OFFSET="$(printf '%s' "$WORKTREE_DIR" | cksum | awk '{print $1 % 100}')"
 
 info "Port offset for this worktree: ${PORT_OFFSET}"
 
-
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  REPO-SPECIFIC PORT CONFIG (filled in by /wt-adopt)         ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -226,7 +225,6 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 #
 #   info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
 
-
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  REPO-SPECIFIC INSTALL (filled in by /wt-adopt)             ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -249,7 +247,6 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 #   info "Running setup"
 #   make -C "${WORKTREE_DIR}" setup
 
-
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  USER-DEFINED EXTRA SETUP                                   ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -266,7 +263,6 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 #
 #   # Build step / warmup
 #   (cd "${WORKTREE_DIR}" && npm run build)
-
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  GENERIC — Summary (do not edit)                            ║

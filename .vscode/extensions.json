@@ -1,9 +1,10 @@
 {
   "recommendations": [
     "davidanson.vscode-markdownlint",
-    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "timonwong.shellcheck",
+    "github.vscode-github-actions",
     "ms-vscode.makefile-tools",
-    "redhat.vscode-yaml",
-    "timonwong.shellcheck"
+    "redhat.vscode-yaml"
   ]
 }

@@ -43,7 +43,7 @@ This writes `scripts/wt-setup.sh`, the `.claude/skills/wt-*/` skill files, and a
 
 Open Claude Code inside the repo and run:
 
-```
+```text
 /wt-adopt
 ```
 
@@ -57,7 +57,7 @@ Open Claude Code inside the repo and run:
 
 Once you're happy, create your first worktree:
 
-```
+```text
 /wt-open implement the auth refactor from issue 42
 ```
 
@@ -107,15 +107,29 @@ The same branch name always produces the same worktree path and port offset. Run
 ./try-install.sh /path/to/your/repo --force      # overwrite existing files
 ```
 
-### Run the test suite
+### Run the checks
 
-`test.sh` runs automated smoke tests (install, flags, idempotency, worktree creation):
+```bash
+make                         # list every target
+make prepare                 # install the git hooks — run once per clone
+make lint                    # every linter, via pre-commit
+make test                    # the smoke suite (install, flags, idempotency, worktree creation)
+make ci                      # lint + test, the local equivalent of CI
+```
+
+`make lint` runs [pre-commit](https://pre-commit.com) through `uvx`, so it needs
+[uv](https://docs.astral.sh/uv/) — `brew install mise && mise install` provisions the exact
+pinned versions from `.mise.toml`. Every linter behind it is pinned by rev in
+`.pre-commit-config.yaml`; nothing is added to `package.json`, which stays dependency-free.
+
+Some hooks (markdownlint, shfmt, whitespace fixers) **rewrite files** and report a failure when
+they do — re-run `make lint` and commit what changed.
+
+`test.sh` can also be run directly:
 
 ```bash
 ./test.sh                    # uses a temp directory
 ./test.sh /tmp/my-test-repo  # uses the specified directory
-make test                    # same thing via Makefile
-make ci                      # lint + test
 ```
 
 ## Publishing to npm
@@ -134,18 +148,25 @@ npm whoami                     # confirm you're logged in
 1. Make sure `main` is clean and CI is green (`make ci`).
 2. Bump the version — `npm version patch|minor|major` updates `package.json` and creates a git tag.
 3. Verify the tarball contents before publishing:
+
    ```bash
    npm pack --dry-run          # lists files that would ship (should match the "files" field in package.json)
    ```
+
 4. Publish:
+
    ```bash
    npm publish --access public # --access public is required for the first publish of a scoped package
    ```
+
 5. Push the bump commit and tag:
+
    ```bash
    git push --follow-tags
    ```
+
 6. Confirm the new version resolves:
+
    ```bash
    npx @thinkvelta/claude-worktree-tools@latest --help
    ```

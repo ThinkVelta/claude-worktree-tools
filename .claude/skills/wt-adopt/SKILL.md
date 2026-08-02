@@ -83,11 +83,11 @@ Read the existing `scripts/wt-setup.sh`. If it does not exist, tell the user to 
 
 For each port found in Phase 1, identify which env var carries it. There are three common shapes:
 
-| Shape                    | Example                              | What to do                                                                                                |
-| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| **URL-embedded**         | `BACKEND_URL=http://localhost:8000`  | Rewrite the URL with the new port. Don't introduce a separate `BACKEND_PORT` — that would be duplicative. |
-| **Bare port var**        | `PORT=8000` or `BACKEND_PORT=8000`   | Rewrite the port var directly. This is the simplest case.                                                 |
-| **Both, with port var as source** | `PORT=8000` + `URL=http://localhost:${PORT}` | Rewrite only the bare port var; the URL resolves at read time. |
+| Shape                             | Example                                      | What to do                                                                                                |
+| --------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **URL-embedded**                  | `BACKEND_URL=http://localhost:8000`          | Rewrite the URL with the new port. Don't introduce a separate `BACKEND_PORT` — that would be duplicative. |
+| **Bare port var**                 | `PORT=8000` or `BACKEND_PORT=8000`           | Rewrite the port var directly. This is the simplest case.                                                 |
+| **Both, with port var as source** | `PORT=8000` + `URL=http://localhost:${PORT}` | Rewrite only the bare port var; the URL resolves at read time.                                            |
 
 If a URL is the source of truth (the app reads the URL and parses the port out of it), changing only a `PORT` var does nothing — the app will still hit the wrong port. Always trace which variable is actually consumed.
 
@@ -164,12 +164,12 @@ For monorepos, chain multiple install commands.
 
 `wt-setup.sh` runs unattended — any command that prompts for input will hang the worktree creation. Before wiring an install/setup command in, check whether it prompts. This is **stack-agnostic**: it can happen with Make targets, npm scripts, Python entrypoints, or shell scripts.
 
-| Toolchain         | Look for                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| Shell / Make      | `read -p`, `read -r` without `< /dev/null`, `gum input`, `whiptail`, `dialog`         |
-| npm / package.json `scripts` | Scripts that delegate to interactive CLIs (`prisma init`, `vercel login`, etc.) |
-| Python            | `input(`, `click.prompt`, `inquirer.prompt`, `rich.prompt.Prompt`                     |
-| Setup wrappers    | A top-level `setup` / `prepare` / `bootstrap` target that wraps a non-interactive one |
+| Toolchain                    | Look for                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| Shell / Make                 | `read -p`, `read -r` without `< /dev/null`, `gum input`, `whiptail`, `dialog`         |
+| npm / package.json `scripts` | Scripts that delegate to interactive CLIs (`prisma init`, `vercel login`, etc.)       |
+| Python                       | `input(`, `click.prompt`, `inquirer.prompt`, `rich.prompt.Prompt`                     |
+| Setup wrappers               | A top-level `setup` / `prepare` / `bootstrap` target that wraps a non-interactive one |
 
 If the chosen command prompts, prefer one of:
 
@@ -227,7 +227,7 @@ Scan for these issues:
 
 For each issue found, print a specific, actionable suggestion with file and line reference:
 
-```
+```text
 [SUGGEST] Dockerfile:12 — EXPOSE 8000
   Change to: ARG PORT=8000 / EXPOSE $PORT
   And update CMD to read $PORT from environment.
@@ -244,7 +244,7 @@ For each issue found, print a specific, actionable suggestion with file and line
 
 End with a compact summary:
 
-```
+```text
 Health Check Summary
 ════════════════════
 Stack:        <detected stack>

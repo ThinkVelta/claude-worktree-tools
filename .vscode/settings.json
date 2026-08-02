@@ -1,21 +1,39 @@
 {
-  "editor.formatOnSave": true,
   "editor.rulers": [100],
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
   "files.autoSave": "onFocusChange",
 
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-
+  // Markdown is this repo's PRODUCT: templates/skills/wt-*/SKILL.md ships to
+  // users verbatim. No formatter runs on save — nothing in CI enforces one, so
+  // an editor-only formatter rewrites shipped text differently per contributor.
+  // `make lint` (pre-commit -> markdownlint --fix) is the sanctioned fixer; it
+  // is what CI gates on. Trailing spaces are left alone: two of them are a hard
+  // line break, and .editorconfig makes the same exception.
   "[markdown]": {
+    "editor.formatOnSave": false,
     "editor.wordWrap": "on",
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "files.trimTrailingWhitespace": false,
+    "editor.quickSuggestions": {
+      "other": false,
+      "comments": false,
+      "strings": false
+    }
   },
 
-  "[shellscript]": {
-    "editor.defaultFormatter": null
+  // A worktree is a FULL checkout of this repo under .claude/worktrees/, and
+  // this repo IS the worktree tool — several are usually open at once. Left
+  // unexcluded, the watcher holds handles on N copies of the tree and every
+  // search returns N+1 near-identical hits per file. tmp/ holds the generated
+  // test repos written by `make test`.
+  "files.watcherExclude": {
+    "**/.claude/worktrees/**": true,
+    "**/node_modules/**": true,
+    "**/tmp/**": true
+  },
+  "search.exclude": {
+    "**/.claude/worktrees/**": true,
+    "**/node_modules/**": true,
+    "**/tmp/**": true
   }
 }

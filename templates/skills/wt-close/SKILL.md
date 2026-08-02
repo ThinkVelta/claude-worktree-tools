@@ -112,7 +112,7 @@ git -C "$MAIN_REPO" worktree remove "<worktree-path>" && git -C "$MAIN_REPO" bra
 
 If `git branch -d` fails (branch not fully merged), tell the user:
 
-> Branch '<branch>' has unmerged commits. Keeping the branch. To force-delete: `git branch -D <branch>`
+> Branch `<branch>` has unmerged commits. Keeping the branch. To force-delete: `git branch -D <branch>`
 
 ### Option 3: Keep everything
 
@@ -126,7 +126,7 @@ git worktree prune
 
 Print a summary:
 
-```
+```text
 Worktree closed.
 
   Path:    <worktree-path> (removed)

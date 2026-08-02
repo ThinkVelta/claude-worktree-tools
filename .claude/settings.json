@@ -7,44 +7,105 @@
       "Read",
       "WebFetch",
       "WebSearch",
+      "Bash(bash -n *)",
+      "Bash(bash test.sh *)",
+      "Bash(cat *)",
       "Bash(chmod *)",
+      "Bash(diff *)",
       "Bash(find *)",
       "Bash(gh *)",
       "Bash(git -C *)",
       "Bash(git add *)",
-      "Bash(git add:*)",
       "Bash(git branch *)",
       "Bash(git checkout *)",
       "Bash(git commit *)",
-      "Bash(git diff *)",
       "Bash(git diff)",
-      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git fetch *)",
+      "Bash(git for-each-ref *)",
       "Bash(git log)",
+      "Bash(git log *)",
       "Bash(git merge *)",
+      "Bash(git merge-base *)",
+      "Bash(git mv *)",
+      "Bash(git rev-list *)",
+      "Bash(git rev-parse *)",
+      "Bash(git show *)",
+      "Bash(git show-ref *)",
       "Bash(git status)",
       "Bash(git status *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git worktree *)",
+      "Bash(head *)",
       "Bash(ls)",
       "Bash(ls *)",
       "Bash(make *)",
       "Bash(mkdir *)",
       "Bash(node *)",
-      "Bash(npx *)",
+      "Bash(npx --yes markdownlint-cli2 *)",
       "Bash(pwd)",
+      "Bash(shellcheck *)",
+      "Bash(tail *)",
       "Bash(tree *)",
-      "Bash(wc *)"
+      "Bash(uvx pre-commit *)",
+      "Bash(wc *)",
+      "Bash(./test.sh *)"
     ],
     "deny": [
-      "Bash(git push)",
-      "Bash(git push *)",
+      "Bash(gh pr merge)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr merge*)",
+      "Bash(gh repo delete*)",
       "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * main)",
+      "Bash(git push *:main)",
+      "Bash(git push *heads/main)",
+      "Bash(git push * master)",
+      "Bash(git push *:master)",
+      "Bash(git push *heads/master)",
+      "Bash(npm publish)",
+      "Bash(npm publish *)",
+      "Bash(npm publish*)",
+      "Bash(rm -r *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(rm ~)",
+      "Bash(rm ~/*)",
+      "Bash(rm * ~)",
+      "Bash(rm * ~/*)",
       "Read(.env)",
       "Read(.env.local)",
       "Read(.env.dev)",
-      "Read(.env.prod)",
-      "Bash(rm -rf *)"
+      "Read(.env.prod)"
     ]
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/redact-secrets.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

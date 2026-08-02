@@ -80,15 +80,17 @@ The `--no-ff` flag preserves the branch history as a merge commit, which makes t
 **If merge conflicts occur:**
 
 1. List the conflicting files:
+
    ```bash
    git -C "<target-worktree-path>" diff --name-only --diff-filter=U
    ```
+
 2. Report the conflicts clearly to the user.
 3. **Stop.** Merge conflicts need human judgment — auto-resolving risks silently introducing bugs. Tell the user to resolve conflicts in the target worktree, then run `/wt-close` on the source worktree when ready.
 
 **On success**, print:
 
-```
+```text
 Merged '<source-branch>' into '<target-branch>'.
 ```
 
@@ -126,7 +128,7 @@ Print a summary of what was done.
 
 **Batching small fixes:** Several small worktree branches (typo, dep bump, color tweak) merged locally into one branch before opening a single PR:
 
-```
+```text
 /wt-merge fix/typo --into feat/cleanup
 /wt-merge fix/deps --into feat/cleanup
 /wt-merge fix/color --into feat/cleanup
@@ -135,7 +137,7 @@ Print a summary of what was done.
 
 **Branch decomposition:** Sub-branches merged back into a parent feature branch:
 
-```
+```text
 /wt-merge feat/auth-nav --into feat/auth
 /wt-merge feat/auth-table --into feat/auth
 # Then open one PR from feat/auth

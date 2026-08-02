@@ -433,6 +433,77 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 14: the secret-redaction hook actually redacts
+# ---------------------------------------------------------------------------
+
+section "Test 14 — redact-secrets hook masks without destroying"
+
+# This hook failed silently in four different ways across the org before anyone
+# noticed, because a broken filter and a healthy one look identical from
+# outside: emitting nothing on exit 0 is its DESIGNED "nothing to redact"
+# signal. So assert behaviour, not shape.
+#
+# Sentinels: SECRET_SENTINEL must never survive; every KEEP_nn must.
+
+REDACT_SH="${SCRIPT_DIR}/.claude/hooks/redact-secrets.sh"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "  (skipped: jq not installed — the hook fails open without it by design)"
+elif [ ! -f "$REDACT_SH" ]; then
+  fail ".claude/hooks/redact-secrets.sh is missing"
+else
+  SECRET_SENTINEL="Qw7Ab9XyZ2Lm4Np8"
+
+  redact_case() { # <label> <stdout literal> <expect: masked|passthrough>
+    local label="$1" body="$2" expect="$3" payload out stdout_out
+    payload=$(jq -n --arg s "$body" \
+      '{hook_event_name:"PostToolUse",tool_name:"Bash",
+        tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+    out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+
+    if [ -z "$out" ]; then
+      stdout_out="$body" # nothing emitted => Claude Code keeps the original
+    else
+      stdout_out=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+      if [ -z "$stdout_out" ]; then
+        fail "${label}: hook emitted output that is not a valid replacement"
+        return
+      fi
+    fi
+
+    if [ "$expect" = "masked" ] && printf '%s' "$stdout_out" | grep -qF "$SECRET_SENTINEL"; then
+      fail "${label}: secret survived redaction"
+      return
+    fi
+    # Nothing benign may be destroyed, and no line may vanish.
+    local want_lines got_lines
+    want_lines=$(printf '%s' "$body" | grep -c '')
+    got_lines=$(printf '%s' "$stdout_out" | grep -c '')
+    if [ "$want_lines" != "$got_lines" ]; then
+      fail "${label}: line count changed ${want_lines} -> ${got_lines}"
+      return
+    fi
+    if printf '%s' "$body" | grep -qF 'KEEP_01' && ! printf '%s' "$stdout_out" | grep -qF 'KEEP_01'; then
+      fail "${label}: destroyed benign output"
+      return
+    fi
+    pass "$label"
+  }
+
+  # The four forms that leaked or destroyed output in other repos' copies.
+  redact_case "plain KEY=VALUE" "AUTH_SECRET=${SECRET_SENTINEL}
+KEEP_01" masked
+  redact_case "JSON config dump" "{\"AUTH_SECRET\": \"${SECRET_SENTINEL}\"}
+KEEP_01" masked
+  redact_case "YAML quoted value" "AUTH_SECRET: \"${SECRET_SENTINEL}\"
+KEEP_01" masked
+  redact_case "tab separator" "$(printf 'AUTH_SECRET\t=\t%s\nKEEP_01' "$SECRET_SENTINEL")" masked
+  # Secret-free output must come through untouched.
+  redact_case "no secret present" "risk-management-dashboard-v2
+KEEP_01" passthrough
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

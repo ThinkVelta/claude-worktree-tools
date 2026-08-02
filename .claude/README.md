@@ -98,7 +98,16 @@ sync:
 
 | File | Change | Why |
 | - | - | - |
-| `redact-secrets.jq` | added `\\` to the key-name value class (`[^\s"',\\]+`) | The gsub runs on the JSON *serialization*, where a newline is `\` + `n` — neither of them whitespace. Without this the value match ran past end-of-line and replaced every following line up to the next space/quote/comma with one `[REDACTED]`, silently deleting unrelated tool output. Reproduced: a 4-line stdout collapsed to 1. Worth pushing upstream. |
+| `redact-secrets.jq` | redacts each **decoded string** via `redact_walk` instead of the JSON serialization (`tojson`/`fromjson`) | Every pattern in the file is written for raw text — `\s` a real newline, `\t` a real tab, `"` a real quote. Run against a serialization they break four ways at once: the value group crosses `\n` and eats following lines (5,001 → 1 observed); `{"KEY": "VALUE"}` and `KEY<tab>=<tab>VALUE` never match, leaking shapeless secrets from config dumps; and a match that stops mid-escape emits invalid JSON, so `fromjson` throws and the fail-open wrapper passes the **unmasked** original through. |
+| `redact-secrets.jq` | `\b` on every value-shape prefix | `sk-[A-Za-z0-9_-]{16,}` fired inside ordinary words — `risk-management-dashboard-v2` and `disk-utilization-report-2024` were both mangled in output containing no secret. |
+| `redact-secrets.jq` | PEM body restricted to base64 + whitespace | An unrestricted `[\s\S]*?` matches from any `BEGIN` marker to any later `END`, so a `grep -rn 'PRIVATE KEY' .` transcript lost 21 of 24 lines between two unrelated hits. |
+| `redact-secrets.jq` | key-name value group is a tempered token, `(?:(?!\\n)[^\s"',])+` | Streams carrying `\n` as two characters (`docker inspect`, `kubectl -o json`, `gh api`) were swallowed whole while the physical line count stayed unchanged — invisible to a line-count audit. Refusing only the two-character sequence keeps a lone backslash inside the value, so a secret containing one is masked in full instead of leaking its tail. |
+
+`test.sh` Test 14 asserts all of this behaviourally. It exists because a broken filter and a
+healthy one are indistinguishable from outside: emitting nothing on exit 0 is the *designed*
+"nothing to redact" signal, so every failure above was silent. Four ThinkVelta repos shipped a
+copy that read the wrong input field and therefore never redacted anything at all, for months,
+with nothing to show for it.
 
 ## Scopes — which file wins
 

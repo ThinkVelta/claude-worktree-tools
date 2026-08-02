@@ -40,33 +40,42 @@
 
 def redact:
     # ── 1. value-shape: tokens recognizable by prefix/shape anywhere ────────
-    # `\b` on every prefix: without it `sk-[A-Za-z0-9_-]{16,}` fires inside
-    # ordinary words — "risk-management-dashboard-v2" and
-    # "disk-utilization-report-2024" both became "…sk-[REDACTED]", mangling
-    # output containing no secret at all.
+    #
+    # `\b` appears on the two sk- rules ONLY, and deliberately nowhere else.
+    #
+    # It is needed there: `sk-[A-Za-z0-9_-]{16,}` fires inside ordinary words,
+    # and "risk-management-dashboard-v2" / "disk-utilization-report-2024" were
+    # both mangled in output containing no secret at all.
+    #
+    # It is harmful everywhere else. `\b` requires a non-word character before
+    # the prefix, so a token concatenated after one — `credential_github_pat_…`,
+    # `tokenAKIA…` — stops matching and the secret goes out in the clear. For a
+    # redaction filter a false negative is worse than a false positive, so the
+    # anchor is only justified where a false positive was actually observed.
+    # These prefixes are distinctive enough not to need it.
     # AI providers (sk-ant- before generic sk- so it isn't shadowed)
     gsub("\\bsk-ant-[A-Za-z0-9_-]{16,}"; "sk-ant-[REDACTED]")             # Anthropic API key
   | gsub("\\bsk-[A-Za-z0-9_-]{16,}"; "sk-[REDACTED]")                     # OpenAI API key (incl. sk-proj-)
     # Supabase
-  | gsub("\\bsbp_[A-Za-z0-9]{20,}"; "sbp_[REDACTED]")                     # Supabase access token
-  | gsub("\\bsb_secret_[A-Za-z0-9_-]{8,}"; "sb_secret_[REDACTED]")        # Supabase secret key (new format)
-  | gsub("\\beyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"; "[REDACTED-JWT]")  # JWT (Supabase anon/service keys)
+  | gsub("sbp_[A-Za-z0-9]{20,}"; "sbp_[REDACTED]")                     # Supabase access token
+  | gsub("sb_secret_[A-Za-z0-9_-]{8,}"; "sb_secret_[REDACTED]")        # Supabase secret key (new format)
+  | gsub("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"; "[REDACTED-JWT]")  # JWT (Supabase anon/service keys)
     # Sentry
-  | gsub("\\bsntrys_[A-Za-z0-9_-]{8,}"; "sntrys_[REDACTED]")              # Sentry auth token
+  | gsub("sntrys_[A-Za-z0-9_-]{8,}"; "sntrys_[REDACTED]")              # Sentry auth token
     # Git hosts
-  | gsub("\\bgithub_pat_[A-Za-z0-9_]{20,}"; "github_pat_[REDACTED]")      # GitHub fine-grained PAT
-  | gsub("\\bgh[oprsu]_[A-Za-z0-9]{20,}"; "gh_[REDACTED]")                # GitHub classic PAT/OAuth/server/user/refresh
-  | gsub("\\bglpat-[A-Za-z0-9_-]{20,}"; "glpat-[REDACTED]")               # GitLab PAT
+  | gsub("github_pat_[A-Za-z0-9_]{20,}"; "github_pat_[REDACTED]")      # GitHub fine-grained PAT
+  | gsub("gh[oprsu]_[A-Za-z0-9]{20,}"; "gh_[REDACTED]")                # GitHub classic PAT/OAuth/server/user/refresh
+  | gsub("glpat-[A-Za-z0-9_-]{20,}"; "glpat-[REDACTED]")               # GitLab PAT
     # Payments
-  | gsub("\\b(sk|rk)_(live|test)_[A-Za-z0-9]{16,}"; "[REDACTED-STRIPE-KEY]")  # Stripe secret/restricted key
+  | gsub("(sk|rk)_(live|test)_[A-Za-z0-9]{16,}"; "[REDACTED-STRIPE-KEY]")  # Stripe secret/restricted key
     # Cloud / SaaS
-  | gsub("\\bA(KIA|SIA)[0-9A-Z]{16}"; "[REDACTED-AWS-KEY]")               # AWS access key id (incl. temporary ASIA)
-  | gsub("\\bAIza[0-9A-Za-z_-]{35}"; "[REDACTED-GOOGLE-KEY]")             # Google API key
-  | gsub("\\bya29\\.[0-9A-Za-z_-]{20,}"; "[REDACTED-GOOGLE-OAUTH]")       # Google OAuth access token
-  | gsub("\\bxox[baprs]-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")     # Slack token (bot/user/app/refresh)
-  | gsub("\\bxapp-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")           # Slack app-level token
-  | gsub("\\bSG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}"; "[REDACTED-SENDGRID-KEY]")  # SendGrid
-  | gsub("\\bnpm_[A-Za-z0-9]{36}"; "npm_[REDACTED]")                      # npm token
+  | gsub("A(KIA|SIA)[0-9A-Z]{16}"; "[REDACTED-AWS-KEY]")               # AWS access key id (incl. temporary ASIA)
+  | gsub("AIza[0-9A-Za-z_-]{35}"; "[REDACTED-GOOGLE-KEY]")             # Google API key
+  | gsub("ya29\\.[0-9A-Za-z_-]{20,}"; "[REDACTED-GOOGLE-OAUTH]")       # Google OAuth access token
+  | gsub("xox[baprs]-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")     # Slack token (bot/user/app/refresh)
+  | gsub("xapp-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")           # Slack app-level token
+  | gsub("SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}"; "[REDACTED-SENDGRID-KEY]")  # SendGrid
+  | gsub("npm_[A-Za-z0-9]{36}"; "npm_[REDACTED]")                      # npm token
     # PEM private-key blocks (multi-line). Three constraints, each earning its
     # keep:
     #   * body limited to base64 + whitespace, because an unrestricted

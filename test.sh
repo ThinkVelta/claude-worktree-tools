@@ -505,9 +505,38 @@ KEEP_01" masked
   redact_case "YAML quoted value" "AUTH_SECRET: \"${SECRET_SENTINEL}\"
 KEEP_01" masked
   redact_case "tab separator" "$(printf 'AUTH_SECRET\t=\t%s\nKEEP_01' "$SECRET_SENTINEL")" masked
-  # Secret-free output must come through untouched.
+  # Secret-free output must come through untouched. This is the over-redaction
+  # guard: `sk-` used to fire inside ordinary words.
   redact_case "no secret present" "risk-management-dashboard-v2
+disk-utilization-report-2024
 KEEP_01" passthrough
+
+  # …and the other direction. A distinctive token concatenated after a word
+  # character must STILL be masked: putting `\b` on every prefix (rather than
+  # just the collision-prone sk- ones) turned each of these into a bypass.
+  redact_concat() { # <label> <token>
+    local label="$1" tok="$2" payload out stdout_out
+    payload=$(jq -n --arg s "credential_${tok}
+KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
+               tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+    out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+    if [ -z "$out" ]; then
+      fail "${label}: concatenated token was not redacted at all"
+      return
+    fi
+    stdout_out=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+    if printf '%s' "$stdout_out" | grep -qF "$tok"; then
+      fail "${label}: concatenated token survived"
+    elif ! printf '%s' "$stdout_out" | grep -qF 'KEEP_01'; then
+      fail "${label}: destroyed benign output"
+    else
+      pass "$label"
+    fi
+  }
+
+  redact_concat "concatenated github_pat_ masked" "github_pat_ABCDEFGHIJKLMNOPQRSTUV"
+  redact_concat "concatenated ghp_ masked" "ghp_ABCDEFGHIJKLMNOPQRSTUVWX01"
+  redact_concat "concatenated AKIA masked" "AKIAIOSFODNN7EXAMPLE"
 
   # PEM blocks. The encrypted form carries Proc-Type/DEK-Info headers whose
   # `:` `,` `-` are not base64 — a base64-only body stops redacting exactly the

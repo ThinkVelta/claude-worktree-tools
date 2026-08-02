@@ -538,6 +538,50 @@ KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
   redact_concat "concatenated ghp_ masked" "ghp_ABCDEFGHIJKLMNOPQRSTUVWX01"
   redact_concat "concatenated AKIA masked" "AKIAIOSFODNN7EXAMPLE"
 
+  # The value group is a tempered token. Both halves of that need pinning, or
+  # it can revert to a plain class without the suite noticing.
+  #
+  # (a) it must not cross a LITERAL backslash-n — two characters, as emitted by
+  #     docker inspect / kubectl -o json / gh api. Note the double quotes: bash
+  #     does not interpret \n there, so this really is backslash + n.
+  tempered_body="AUTH_SECRET=${SECRET_SENTINEL}\nKEEP_01 KEEP_02"
+  payload=$(jq -n --arg s "$tempered_body" \
+    '{hook_event_name:"PostToolUse",tool_name:"Bash",
+      tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+  out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+  got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+  #     KEEP_01 is the discriminating sentinel, not KEEP_02: an untempered
+  #     class stops at the first real SPACE, so it swallows `\nKEEP_01` but
+  #     leaves KEEP_02 standing. Asserting on KEEP_02 would pass either way.
+  if [ -z "$out" ]; then
+    fail "literal backslash-n: secret was not redacted at all"
+  elif printf '%s' "$got" | grep -qF "$SECRET_SENTINEL"; then
+    fail "literal backslash-n: secret survived"
+  elif ! printf '%s' "$got" | grep -qF 'KEEP_01'; then
+    fail "literal backslash-n: content after the escape was swallowed"
+  else
+    pass "literal backslash-n does not swallow what follows"
+  fi
+
+  # (b) a LONE backslash inside a secret must stay inside the match, so the
+  #     value is masked in full. Excluding all backslashes (an earlier attempt)
+  #     leaked everything after the first one.
+  backslash_tail="zAbQwLm4Np8"
+  payload=$(jq -n --arg s "AUTH_SECRET=Xy\\${backslash_tail}
+KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
+            tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+  out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+  got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+  if [ -z "$out" ]; then
+    fail "lone backslash: secret was not redacted at all"
+  elif printf '%s' "$got" | grep -qF "$backslash_tail"; then
+    fail "lone backslash: value leaked its tail after the backslash"
+  elif ! printf '%s' "$got" | grep -qF 'KEEP_01'; then
+    fail "lone backslash: destroyed benign output"
+  else
+    pass "lone backslash in a secret is masked in full"
+  fi
+
   # PEM blocks. The encrypted form carries Proc-Type/DEK-Info headers whose
   # `:` `,` `-` are not base64 — a base64-only body stops redacting exactly the
   # keys someone bothered to encrypt, which is the wrong way round.

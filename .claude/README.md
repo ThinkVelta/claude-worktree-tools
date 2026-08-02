@@ -83,6 +83,9 @@ Two consequences worth knowing:
   holds a comma — `print(f"{fn(a, b)}")` reads as brace expansion and is blocked. (Plain
   comprehensions and dict literals are not affected; verified.) Write the script to a file and run
   it, which is better practice here anyway.
+- A backtick anywhere in an operand of a file-reading command reads as command substitution, so
+  grepping for markdown code spans is blocked: ``grep -c 'Branch `<branch>`' file.md``. Match on a
+  backtick-free substring, or use the Grep tool.
 
 The three hook files are **ported from an upstream source** and should stay as close to verbatim as
 possible so future syncs stay reviewable — put repo-specific rules in a sibling hook rather than

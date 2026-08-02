@@ -1,0 +1,14 @@
+# Canonicalize commit authorship without rewriting history.
+#
+# Early commits were authored under a personal address and under a previous
+# employer's domain. Both are already published — including on `refs/pull/*`
+# refs that GitHub pins permanently and no force-push can reach — so a history
+# rewrite would be destructive and still incomplete. `.mailmap` is the
+# supported fix: `git log`, `git shortlog` and GitHub all honour it.
+#
+# New commits should use the canonical identity directly:
+#   git config --local user.name  "Ruben Broekx"
+#   git config --local user.email ruben@thinkvelta.ai
+
+Ruben Broekx <ruben@thinkvelta.ai> <broekxruben@gmail.com>
+Ruben Broekx <ruben@thinkvelta.ai> <ruben.broekx@boardofinnovation.com>

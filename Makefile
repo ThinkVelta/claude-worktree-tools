@@ -1,4 +1,4 @@
-.PHONY: help prepare lint test ci clean
+.PHONY: help prepare lint test demo ci clean
 
 # pre-commit runs through `uvx`, not through a project venv. This repo has no
 # Python source of its own — uv is purely the delivery mechanism for a
@@ -40,6 +40,12 @@ lint: ## Run every pre-commit hook over the whole tree
 
 test: ## Run the smoke test suite (override the scratch dir with TEST_DIR=...)
 	bash test.sh "$(TEST_DIR)"
+
+# Regenerates the worked example in README.md from a throwaway repo, so the
+# docs never require recording a real session on a real machine. The script
+# refuses to emit anything still containing a real path or username.
+demo: ## Regenerate the README demo block from an invented fixture repo
+	bash scripts/make-demo.sh --write
 
 ci: lint test ## Run lint and tests (the full local equivalent of CI)
 

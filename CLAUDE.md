@@ -15,10 +15,12 @@ bin/init.js                          CLI entry point (ESM, zero deps)
 templates/wt-setup.sh                Bash script template → target's scripts/wt-setup.sh
 templates/skills/wt-*/SKILL.md       Skill templates → target's .claude/skills/wt-*/SKILL.md
 scripts/wt-setup.sh                  This repo's own installed copy (dogfooding)
-try-install.sh                       Install from the published package (dev use)
-local-install.sh                     Install from this checkout (dev use)
+scripts/make-demo.sh                 Regenerates the README demo from a fixture repo
+try-install.sh                       Install THIS checkout into any repo (dev use)
+local-install.sh                     Install into THIS repo, then run /wt-adopt (dev use)
 test.sh                              Smoke test suite
-Makefile                             help, prepare, lint, test, ci, clean
+RELEASING.md                         Publish flow for npm
+Makefile                             help, prepare, lint, test, demo, ci, clean
 .github/workflows/ci.yml             CI: lint + OS × node test matrix
 .github/workflows/pr.yml             CI: automated Codex PR review
 ```
@@ -48,7 +50,11 @@ Makefile                             help, prepare, lint, test, ci, clean
   failure when it does — re-run it and commit what changed.
 - `make test` — `bash test.sh tmp/test-make`; prints `<N> passed`
 - `make ci` — lint + test, the local equivalent of CI
+- `make demo` — regenerate the README worked example from an invented fixture repo. Never
+  record or screenshot a real session for the docs; `scripts/make-demo.sh` refuses to emit
+  output that still contains a real path or username.
 - `./try-install.sh /path/to/any/repo [--dry-run|--force]` — install into a real repo
+- Publishing: see `RELEASING.md`
 
 Tool versions are pinned in `.mise.toml` (`mise install` provisions them) and, for every linter,
 in `.pre-commit-config.yaml`.

@@ -53,8 +53,8 @@ git -C "$TARGET" config user.email "dev@example.invalid"
 # `make demo` is idempotent — otherwise every regeneration churns the README.
 export GIT_AUTHOR_DATE="2026-01-01T00:00:00+00:00"
 export GIT_COMMITTER_DATE="2026-01-01T00:00:00+00:00"
-printf 'PORT=8000\nDATABASE_URL=postgres://localhost:5432/acme\n' > "$TARGET/.env.example"
-printf '# acme-api\n\nA small service.\n' > "$TARGET/README.md"
+printf 'PORT=8000\nDATABASE_URL=postgres://localhost:5432/acme\n' >"$TARGET/.env.example"
+printf '# acme-api\n\nA small service.\n' >"$TARGET/README.md"
 git -C "$TARGET" add -A
 git -C "$TARGET" commit --quiet -m "initial commit"
 
@@ -63,21 +63,33 @@ git -C "$TARGET" commit --quiet -m "initial commit"
 git -C "$TARGET" add -A
 git -C "$TARGET" commit --quiet -m "add worktree toolkit"
 
+# The escape byte comes from printf rather than a `\x1b` literal: GNU sed
+# understands that escape, but it is not in POSIX and BSD seds vary. Building
+# the byte first works everywhere.
+ESC="$(printf '\033')"
+
+# Single scrubber, used for the emitted demo AND for every diagnostic. Nothing
+# in this script prints captured output any other way — a failure path that
+# dumps the raw capture would spill the real scratch path into a terminal or a
+# public CI log, which is the whole thing this script exists to prevent.
+# Longest prefix first, so the resolved form never leaves a stub like /private.
+scrub() {
+  sed -e "s/${ESC}\[[0-9;]*m//g" \
+    -e "s|$WORK_PHYS|$DEMO_ROOT|g" \
+    -e "s|$WORK|$DEMO_ROOT|g" \
+    "$1"
+}
+
 # Run the real script and capture plain stdout+stderr. No tty, so no redraw.
 RAW="$WORK/raw.txt"
-(cd "$TARGET" && bash scripts/wt-setup.sh "$DEMO_BRANCH" --base main) > "$RAW" 2>&1 || {
+(cd "$TARGET" && bash scripts/wt-setup.sh "$DEMO_BRANCH" --base main) >"$RAW" 2>&1 || {
   echo "demo run failed:" >&2
-  cat "$RAW" >&2
+  scrub "$RAW" >&2
   exit 1
 }
 
-# Strip ANSI colour, then rewrite the scratch path to the neutral one. Longest
-# prefix first, so the resolved form never leaves a stub like /private behind.
 CLEAN="$WORK/clean.txt"
-sed -e 's/\x1b\[[0-9;]*m//g' \
-  -e "s|$WORK_PHYS|$DEMO_ROOT|g" \
-  -e "s|$WORK|$DEMO_ROOT|g" \
-  "$RAW" > "$CLEAN"
+scrub "$RAW" >"$CLEAN"
 
 # ---------------------------------------------------------------------------
 # Refuse to emit a leak
@@ -118,26 +130,28 @@ elif ! grep -qF -- "$DEMO_WT" "$CLEAN"; then
 fi
 
 if [[ -n "$leaked" ]]; then
-  printf 'ERROR: refusing to emit the demo — the scrub did not fully hold:\n%s' "$leaked" >&2
-  echo "--- captured output ---" >&2
-  cat "$CLEAN" >&2
+  # Report WHICH pattern matched, never the matching text. Dumping the captured
+  # output here would print the very thing the guard exists to withhold,
+  # straight into a terminal or a CI log — and CI logs for this repo are public.
+  printf 'ERROR: refusing to emit the demo — these patterns survived the scrub:\n%s' "$leaked" >&2
+  echo "Inspect the capture yourself if you need to; it is NOT printed here on purpose." >&2
   echo "Fix the substitution in $0 before regenerating." >&2
   exit 1
 fi
 
 # Anchor on end-of-line rather than a word boundary: BSD sed has no \b.
-sed "s/\(Port offset[^0-9]*\)[0-9][0-9]*$/\1${DEMO_OFFSET}/" "$CLEAN" > "$CLEAN.tmp"
+sed "s/\(Port offset[^0-9]*\)[0-9][0-9]*$/\1${DEMO_OFFSET}/" "$CLEAN" >"$CLEAN.tmp"
 mv "$CLEAN.tmp" "$CLEAN"
 
 if grep -qE 'Port offset' "$CLEAN" && ! grep -qE "Port offset[^0-9]*${DEMO_OFFSET}\$" "$CLEAN"; then
   echo "ERROR: port offset rewrite did not take (wanted ${DEMO_OFFSET}, from ${REAL_OFFSET})." >&2
-  cat "$CLEAN" >&2
   exit 1
 fi
 
 BLOCK="$WORK/block.md"
 {
   echo "$BEGIN_MARKER"
+  # shellcheck disable=SC2016  # literal markdown, not a shell expansion
   echo '<!-- Regenerate with `make demo`. Do not hand-edit. -->'
   echo ''
   echo '```console'
@@ -147,7 +161,7 @@ BLOCK="$WORK/block.md"
   echo '```'
   echo ''
   echo "$END_MARKER"
-} > "$BLOCK"
+} >"$BLOCK"
 
 if [[ "$WRITE" != true ]]; then
   cat "$BLOCK"
@@ -164,7 +178,7 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v blockfile="$BLOCK" '
   $0 == begin { inblock = 1; while ((getline line < blockfile) > 0) print line; close(blockfile); next }
   $0 == end   { inblock = 0; next }
   !inblock    { print }
-' "$README" > "$README.new"
+' "$README" >"$README.new"
 
 mv "$README.new" "$README"
 echo "README.md updated."

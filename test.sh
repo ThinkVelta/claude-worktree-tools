@@ -281,6 +281,55 @@ for skill in wt-open wt-close wt-cleanup wt-help wt-list wt-merge wt-adopt; do
 done
 
 # ---------------------------------------------------------------------------
+# Test 12: the README demo is generated, current, and leak-free
+# ---------------------------------------------------------------------------
+
+section "Test 12 — README demo block is up to date"
+
+# Running the generator here is what puts it under CI, on both OSes in the
+# matrix — otherwise a 170-line script that touches sed, cksum and mktemp (all
+# of which differ between BSD and GNU) would ship untested. It also catches the
+# README drifting from what the setup script actually prints.
+
+DEMO_SH="${SCRIPT_DIR}/scripts/make-demo.sh"
+README_MD="${SCRIPT_DIR}/README.md"
+
+if [ ! -f "$DEMO_SH" ]; then
+  fail "scripts/make-demo.sh is missing"
+elif [ ! -f "$README_MD" ]; then
+  fail "README.md is missing"
+else
+  DEMO_EXPECTED="${TARGET_DIR}/demo-expected.md"
+  DEMO_ACTUAL="${TARGET_DIR}/demo-actual.md"
+
+  # A non-zero exit here means the generator failed OR its leak guard fired.
+  # Either way the demo must not be trusted.
+  if bash "$DEMO_SH" >"$DEMO_EXPECTED" 2>"${TARGET_DIR}/demo-err.txt"; then
+    pass "make-demo.sh runs and its privacy assertions hold"
+
+    sed -n '/^<!-- BEGIN GENERATED DEMO -->$/,/^<!-- END GENERATED DEMO -->$/p' \
+      "$README_MD" >"$DEMO_ACTUAL"
+
+    if diff -u "$DEMO_ACTUAL" "$DEMO_EXPECTED" >/dev/null 2>&1; then
+      pass "README demo block matches the generator output"
+    else
+      fail "README demo block is stale — run 'make demo' and commit the result"
+      diff -u "$DEMO_ACTUAL" "$DEMO_EXPECTED" | head -20 || true
+    fi
+
+    # Belt and braces: assert on the committed README itself, not just on the
+    # generator, so a hand-edited block cannot smuggle a real path back in.
+    if grep -qE '/Users/|/home/[a-z0-9_-]+/\.' "$DEMO_ACTUAL"; then
+      fail "README demo block contains a real-looking home directory"
+    else
+      pass "README demo block contains no real home directory"
+    fi
+  else
+    fail "make-demo.sh failed or refused to emit (see ${TARGET_DIR}/demo-err.txt)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

@@ -312,10 +312,16 @@ for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
   fi
 
   # Run it once against a known REPO_ROOT and report the full path it computes.
-  # `WORKTREE_DIR=` starts empty so a derivation that never assigns it, or that
-  # references an undefined ${BRANCH_HASH}, yields something that cannot match.
+  # WORKTREE_DIR starts empty so a derivation that never assigns it, or that
+  # references an undefined BRANCH_HASH, yields something that cannot match.
+  #
+  # Keep every comment OUT of the $( ) below. bash 3.2 (still /bin/bash on
+  # macOS) scans command substitutions naively, so an apostrophe inside a
+  # comment in there is read as an opening quote and the script dies with
+  # "unexpected EOF while looking for matching". Both variables below are read
+  # by the evaluated derivation, hence the SC2034 waiver.
+  # shellcheck disable=SC2034
   documented_path="$(
-    # shellcheck disable=SC2034  # both are read by the eval'd derivation
     REPO_ROOT="/repo"
     WORKTREE_DIR=""
     eval "$derivation" >/dev/null 2>&1

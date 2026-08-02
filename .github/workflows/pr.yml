@@ -1,128 +1,144 @@
 name: PR Reviewer
-run-name: "PR Reviewer - #${{ github.event.pull_request.number }}"
+run-name: 'PR Reviewer - #${{ github.event.pull_request.number }}'
 
+# This repo has a single long-lived branch: feature branches PR straight into
+# `main`, so `main` is the feature-PR base and the right trigger for a
+# per-feature reviewer.
 on:
   pull_request:
-    types: [opened, synchronize]
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+# Each push to a PR re-triggers this workflow, which runs the (expensive)
+# Codex review agent. Cancel any in-progress run for the same PR so only
+# the latest commit gets reviewed.
+concurrency:
+  group: pr-reviewer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
+  # Single job: Codex runs and the review is posted from the same job. The
+  # earlier two-job split (codex, then post_feedback via job outputs) trips
+  # GitHub's substring-secret defense, which silently blanks any job output
+  # whose value contains a registered-secret substring, including false
+  # positives — and since the posting job was gated on a non-empty output, the
+  # run would still report success having posted nothing. That defense only
+  # fires at the job-output boundary, so keeping everything in one job
+  # sidesteps it entirely. The two composite actions invoked below are
+  # step-level, so the review text crosses only step and composite-output
+  # boundaries and never reintroduces that boundary: no `jobs.<id>.outputs` key
+  # exists here, and none may be added.
   codex:
-    if: github.actor != 'dependabot[bot]'
+    # Gate on PR author, not triggering actor: when a human syncs/merges a
+    # bot PR, `github.actor` becomes the human while the PR itself is still
+    # bot-authored. `pull_request.user.login` is the stable signal.
+    #
+    # Skipped entirely for pull requests from forks. GitHub withholds secrets
+    # from fork-triggered `pull_request` runs, so `OPENAI_API_KEY` arrives
+    # empty and the review action's fail-fast guard stops the job — which is
+    # correct, but it would put a red X on every outside contributor's first
+    # PR for a reason they can neither see nor fix. This package is public, so
+    # fork PRs are the expected case. Skipping reads as "not applicable"
+    # instead. Nothing is lost: a maintainer reviews fork PRs by hand, and
+    # pushing the branch into this repo runs the reviewer normally.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
-      issues: read
-      pull-requests: read
-    outputs:
-      final_message: ${{ steps.run_codex.outputs['final-message'] }}
+      issues: write
+      # `pull-requests: write` (not just `read`) is required for the
+      # `./.github/actions/codex-pr-report` comment upsert: GitHub's
+      # createComment endpoint on a PR-typed issue returns 403 with only
+      # `issues: write`, even though the docs claim that scope suffices. The
+      # token still cannot merge or push code (no `contents: write`).
+      pull-requests: write
+      # `statuses: write` lets `./.github/actions/codex-pr-report` publish the
+      # `Codex review` commit status so unresolved findings surface in the
+      # checks list / merge box (non-blocking, the human still merges). A
+      # commit status (not a Checks-API check run) is used so the entry shows
+      # as a flat `Codex review` with no misleading workflow-name prefix.
+      statuses: write
+    env:
+      # This repository has no comment-posting bot integrations (no Codecov
+      # or similar), so no bot comments are filtered out of the review feed.
+      EXCLUDED_COMMENT_LOGINS: ''
     steps:
-      - uses: actions/checkout@v6
+      # Check out via `refs/pull/N/head`, not the merge ref or the raw
+      # head SHA. The merge ref is materialized asynchronously by GitHub
+      # and the checkout can race it; fetching the head SHA by value
+      # falls through to a credential prompt when the SHA isn't yet
+      # reachable via an advertised ref (same "terminal prompts disabled"
+      # symptom). The `/head` ref is updated synchronously on every push
+      # to the PR and is fetchable by name. Codex still reviews the diff
+      # between base.sha and head.sha: those are passed to the prompt
+      # by value below. This step must stay first, because a local action
+      # referenced as `uses: ./.github/actions/...` is resolved from the
+      # working tree and so does not exist until the checkout has run.
+      - uses: actions/checkout@v7.0.1
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
 
-      - name: Pre-fetch base and head refs for the PR
-        run: |
-          git fetch --no-tags origin \
-            ${{ github.event.pull_request.base.ref }} \
-            +refs/pull/${{ github.event.pull_request.number }}/head
-
-      - name: Fetch PR conversation
-        id: fetch_conversation
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ github.token }}
-          result-encoding: string
-          script: |
-            const prNumber = context.payload.pull_request.number;
-            const opts = { owner: context.repo.owner, repo: context.repo.repo };
-
-            const [issueComments, reviews, reviewComments] = await Promise.all([
-              github.paginate(github.rest.issues.listComments, { ...opts, issue_number: prNumber }),
-              github.paginate(github.rest.pulls.listReviews, { ...opts, pull_number: prNumber }),
-              github.paginate(github.rest.pulls.listReviewComments, { ...opts, pull_number: prNumber }),
-            ]);
-
-            const all = [
-              ...issueComments.map(c => ({ date: c.created_at, text: `@${c.user.login}: ${c.body}` })),
-              ...reviews.filter(r => r.body).map(r => ({ date: r.submitted_at, text: `@${r.user.login} (review ${r.state}): ${r.body}` })),
-              ...reviewComments.map(c => ({ date: c.created_at, text: `@${c.user.login} (on ${c.path}): ${c.body}` })),
-            ];
-
-            all.sort((a, b) => new Date(a.date) - new Date(b.date));
-            return all.map(e => e.text).join('\n---\n');
-
-      # - name: Show PR conversation
-      #   env:
-      #     CONVERSATION: ${{ steps.fetch_conversation.outputs.result }}
-      #   run: |
-      #     echo "--- PR conversation history ---"
-      #     printf '%s\n' "$CONVERSATION"
-
-      - name: Fail fast on missing OPENAI_API_KEY
+      # Guard against PR-head drift between event time and checkout. The
+      # `refs/pull/N/head` ref is mutable: a fresh push to the PR head
+      # arriving after this run was queued but before the checkout reads
+      # the ref would silently land us on the newer commit, while the
+      # prompt below still pins Codex to the event-time SHAs. With
+      # `concurrency.cancel-in-progress: true` the window is tiny, but
+      # fail fast if it ever opens, because the canceling push will spawn
+      # a fresh run that produces a correct review. Kept in the workflow
+      # rather than the review action: inside the action it would run under
+      # `continue-on-error` on attempt 1, so a real drift would be swallowed
+      # for 20 seconds before failing on attempt 2.
+      - name: Verify checkout matches event head SHA
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EXPECTED: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -z "${OPENAI_API_KEY}" ]; then
-            echo "OPENAI_API_KEY is not set for this workflow run."
+          actual=$(git rev-parse HEAD)
+          if [ "$actual" != "$EXPECTED" ]; then
+            echo "::error::PR head drifted: checked out $actual but event head was $EXPECTED. A newer push should re-trigger this workflow."
             exit 1
           fi
 
-      - name: Prepare Codex home
-        run: |
-          mkdir -p "$HOME/.codex"
-
-      - name: Run Codex
-        id: run_codex
-        uses: openai/codex-action@v1
+      # Two-attempt retry for the Codex action: its preflight permission
+      # check occasionally gets a transient `Bad credentials` 401 from
+      # `github.token` on freshly-started jobs, and the failure happens
+      # inside the action's compiled binary so a script-level retry is the
+      # only mitigation. `nick-fields/retry` can't wrap `uses:` actions, so
+      # use `continue-on-error` + a guarded second step. The post step below
+      # reads from whichever attempt produced `final-message`. This pair
+      # cannot move into the composite action either, because composite
+      # steps do not support `continue-on-error`.
+      - name: Run Codex (attempt 1)
+        id: codex_try1
+        uses: ./.github/actions/codex-pr-review
+        continue-on-error: true
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt: |
-            This is PR #${{ github.event.pull_request.number }} for ${{ github.repository }}.
-            Base SHA: ${{ github.event.pull_request.base.sha }}
-            Head SHA: ${{ github.event.pull_request.head.sha }}
-
-            Review ONLY the changes introduced by the PR.
-            Suggest any improvements, potential bugs, or issues.
-            Be concise and specific in your feedback.
-            Write in markdown format, with a new title for each issue/topic you raise.
-            When generating tables, make sure they're formatted correctly and don't forget the header separator row.
-            Include code snippets where appropriate, in properly formatted code blocks.
-            Analyze the conversation history to understand the context of the PR and previous feedback given. Give your new feedback in relation to this, highlighing what has been fixed and what has been missed, as well as any new issues that have been introduced.
-
-            Format your feedback message as follows:
-              - A `## Feedback Summary` section with a table tracking ALL feedback ever raised across the PR's lifetime (columns: `Issue`, `Severity`, `Summary`, `Resolved`). Include every issue from previous reviews as well as new ones. Use ✅ for resolved issues and ❌ for unresolved ones. Sort by severity (highest first), then resolved status (unresolved first).
-              - A `## Open Issues` section containing only the unresolved issues. Each issue gets its own `###` subheading formatted as `### Issue title [severity]`. Within each subheading, structure the content with bold labels:
-                - **Issue:** A clear explanation of the problem, with code snippets in fenced code blocks where appropriate.
-                - **Proposed fix:** A concrete solution, including code snippets showing the recommended change.
-                - **Related files:** A list of file paths affected by this issue.
-
-            Pull request title and body:
-            ----
-            ${{ github.event.pull_request.title }}
-            ${{ github.event.pull_request.body }}
-
-            Current PR's conversation history:
-            ----
-            ${{ steps.fetch_conversation.outputs.result }}
-
-  post_feedback:
-    runs-on: ubuntu-latest
-    needs: codex
-    if: needs.codex.outputs.final_message != ''
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-      - name: Report Codex feedback
-        uses: actions/github-script@v9
-        env:
-          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
-        with:
           github-token: ${{ github.token }}
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: process.env.CODEX_FINAL_MESSAGE,
-            });
+          excluded-comment-logins: ${{ env.EXCLUDED_COMMENT_LOGINS }}
+
+      - name: Wait before Codex retry
+        if: steps.codex_try1.outcome == 'failure'
+        run: sleep 20
+
+      - name: Run Codex (attempt 2)
+        id: codex_try2
+        if: steps.codex_try1.outcome == 'failure'
+        uses: ./.github/actions/codex-pr-review
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          github-token: ${{ github.token }}
+          excluded-comment-logins: ${{ env.EXCLUDED_COMMENT_LOGINS }}
+
+      - name: Report Codex feedback
+        uses: ./.github/actions/codex-pr-report
+        with:
+          # Gate `try1`'s output on its outcome: if `try1` failed mid-action
+          # after already writing a partial `final-message`, a raw `||` would
+          # pick that stale value and discard `try2`'s successful retry.
+          final-message: ${{ (steps.codex_try1.outcome == 'success' && steps.codex_try1.outputs['final-message']) || steps.codex_try2.outputs['final-message'] }}
+          github-token: ${{ github.token }}

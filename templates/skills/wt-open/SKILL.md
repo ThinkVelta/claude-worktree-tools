@@ -90,9 +90,12 @@ someone created by hand.
 
 **`EXISTING_WT` is empty** — no worktree holds this branch.
 
-- Create one (Step 4), whether or not the branch itself already exists. If a stale
-  `$WORKTREE_DIR` directory is left over from a deleted worktree, the setup script prunes it.
-  The script creates the branch too when it does not exist yet.
+- Create one (Step 4), whether or not the branch itself already exists — the script creates the
+  branch too when it does not exist yet.
+- If a leftover `$WORKTREE_DIR` directory is in the way, the script runs `git worktree prune`
+  first. That clears stale *metadata* only, so if the directory itself survives the script stops
+  with `Directory … exists but is not a git worktree. Remove it manually.` Do not expect creation
+  to succeed through that — relay the message and let the user remove the directory.
 
 ## Step 4 — Run the setup script
 

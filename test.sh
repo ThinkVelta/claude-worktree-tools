@@ -336,6 +336,103 @@ for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
 done
 
 # ---------------------------------------------------------------------------
+# Test 13: the README demo is generated, current, and leak-free
+# ---------------------------------------------------------------------------
+
+section "Test 13 — README demo block is up to date"
+
+# Running the generator here is what puts it under CI, on both OSes in the
+# matrix — otherwise a 170-line script that touches sed, cksum and mktemp (all
+# of which differ between BSD and GNU) would ship untested. It also catches the
+# README drifting from what the setup script actually prints.
+
+DEMO_SH="${SCRIPT_DIR}/scripts/make-demo.sh"
+README_MD="${SCRIPT_DIR}/README.md"
+
+if [ ! -f "$DEMO_SH" ]; then
+  fail "scripts/make-demo.sh is missing"
+elif [ ! -f "$README_MD" ]; then
+  fail "README.md is missing"
+else
+  DEMO_EXPECTED="${TARGET_DIR}/demo-expected.md"
+  DEMO_ACTUAL="${TARGET_DIR}/demo-actual.md"
+
+  # A non-zero exit here means the generator failed OR its leak guard fired.
+  # Either way the demo must not be trusted.
+  if bash "$DEMO_SH" >"$DEMO_EXPECTED" 2>"${TARGET_DIR}/demo-err.txt"; then
+    pass "make-demo.sh runs and its privacy assertions hold"
+
+    sed -n '/^<!-- BEGIN GENERATED DEMO -->$/,/^<!-- END GENERATED DEMO -->$/p' \
+      "$README_MD" >"$DEMO_ACTUAL"
+
+    if diff -u "$DEMO_ACTUAL" "$DEMO_EXPECTED" >/dev/null 2>&1; then
+      pass "README demo block matches the generator output"
+    else
+      fail "README demo block is stale — run 'make demo' and commit the result"
+      diff -u "$DEMO_ACTUAL" "$DEMO_EXPECTED" | head -20 || true
+    fi
+
+    # Belt and braces: assert on the committed README itself, not just on the
+    # generator, so a hand-edited block cannot smuggle a real path back in.
+    # Mask the one allowed prefix, then reject ANY remaining absolute path —
+    # an allowlist. A denylist here missed ordinary paths like
+    # /home/runner/work/repo that do not happen to be followed by a dot.
+    #
+    # The pattern is READ FROM the generator rather than restated here. An
+    # earlier version kept a second copy and asserted the two matched; they
+    # drifted anyway (the generator rejected /tmp/, this check did not), and
+    # comparing quoted source text is brittle. One declaration, no copy.
+    gen_line="$(grep -m1 '^ABSOLUTE_PATH_RE=' "$DEMO_SH" || true)"
+    if [ -z "$gen_line" ]; then
+      fail "scripts/make-demo.sh declares no ABSOLUTE_PATH_RE to reuse"
+      ABSOLUTE_PATH_RE='(^|[[:space:]])/[[:alnum:]]'
+    else
+      eval "$gen_line"
+      pass "absolute-path pattern read from the generator"
+    fi
+
+    # A pattern that matches nothing would make every check below vacuous, so
+    # prove it discriminates. Foreign roots must be rejected whatever character
+    # precedes them — a space-only fixture hid a real gap, where paths after
+    # `[`, `,` or `{` bypassed the guard.
+    re_ok=true
+    for bad in \
+      'Path: /opt/company/repo' \
+      'Path: /Volumes/work/repo' \
+      'output[/Users/alice/project]' \
+      'path,/Volumes/private/repo' \
+      'value{/opt/company/repo}' \
+      '/home/bob/repo at line start'; do
+      printf '%s\n' "$bad" | grep -qE "$ABSOLUTE_PATH_RE" || re_ok=false
+    done
+    # …and the masked fixture, plus a URL, must NOT be rejected.
+    for good in \
+      'Path: DEMOPATH/.claude/worktrees/x' \
+      '$ ./scripts/wt-setup.sh feat/rate-limiting' \
+      'see https://example.com/a/b'; do
+      ! printf '%s\n' "$good" | grep -qE "$ABSOLUTE_PATH_RE" || re_ok=false
+    done
+    if [ "$re_ok" = true ]; then
+      pass "pattern rejects foreign paths at any boundary, accepts the fixture"
+    else
+      fail "pattern does not discriminate foreign paths from the masked fixture"
+    fi
+
+    # Placeholder, not deletion: removing the prefix would leave /.claude/…,
+    # itself an absolute path, and fail on the fixture it is meant to permit.
+    sed 's|/home/dev/acme-api|DEMOPATH|g' "$DEMO_ACTUAL" >"${DEMO_ACTUAL}.masked"
+    if grep -qE "$ABSOLUTE_PATH_RE" "${DEMO_ACTUAL}.masked"; then
+      fail "README demo block contains an absolute path that is not the fixture"
+      grep -nE "$ABSOLUTE_PATH_RE" "${DEMO_ACTUAL}.masked" | head -3 || true
+    else
+      pass "README demo block contains no absolute path but the fixture"
+    fi
+  else
+    fail "make-demo.sh failed or refused to emit (see ${TARGET_DIR}/demo-err.txt)"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

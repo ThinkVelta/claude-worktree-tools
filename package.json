@@ -26,5 +26,12 @@
     "type": "git",
     "url": "git+https://github.com/ThinkVelta/claude-worktree-tools.git"
   },
+  "homepage": "https://github.com/ThinkVelta/claude-worktree-tools#readme",
+  "bugs": {
+    "url": "https://github.com/ThinkVelta/claude-worktree-tools/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "Ruben Broekx <ruben@thinkvelta.ai>"
 }

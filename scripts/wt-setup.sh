@@ -205,14 +205,18 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 # Uncomment and adjust the port variables below for your project.
 # PORT_OFFSET (0–99) is derived above and is deterministic per worktree.
 #
-# Example for a typical full-stack app:
+# Pick a pattern based on how YOUR repo's .env already encodes ports.
+# /wt-adopt analyzes this and fills in the right one — don't blindly add
+# new *_PORT vars if the repo already encodes ports inside URLs.
 #
-#   BACKEND_PORT=$((8000 + PORT_OFFSET))
-#   FRONTEND_PORT=$((3000 + PORT_OFFSET))
+# Shared helper used by both patterns:
 #
-#   # Update ports in the worktree .env (upsert pattern)
 #   update_env_var() {
 #     local file="$1" key="$2" val="$3"
+#     if [[ ! -f "$file" ]]; then
+#       warn "Skipping ${key}: ${file} does not exist"
+#       return 0
+#     fi
 #     if grep -q "^${key}=" "$file" 2>/dev/null; then
 #       sed -i.bak "s|^${key}=.*|${key}=${val}|" "$file" && rm -f "${file}.bak"
 #     else
@@ -220,8 +224,31 @@ info "Port offset for this worktree: ${PORT_OFFSET}"
 #     fi
 #   }
 #
-#   update_env_var "${WORKTREE_DIR}/.env" PORT "$BACKEND_PORT"
+# ─── Pattern A — bare port vars ───────────────────────────────────────
+# Use when the repo's .env exposes ports as standalone variables (e.g.
+# PORT=8000, FRONTEND_PORT=3000).
+#
+#   BACKEND_PORT=$((8000 + PORT_OFFSET))
+#   FRONTEND_PORT=$((3000 + PORT_OFFSET))
+#
+#   update_env_var "${WORKTREE_DIR}/.env" BACKEND_PORT "$BACKEND_PORT"
 #   update_env_var "${WORKTREE_DIR}/.env" FRONTEND_PORT "$FRONTEND_PORT"
+#
+#   info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
+#
+# ─── Pattern B — URL-embedded ports ───────────────────────────────────
+# Use when the repo's .env keeps ports inside URLs (e.g.
+# BACKEND_URL=http://localhost:8000) — those URLs are the source of
+# truth, so rewrite them. Don't introduce a duplicative *_PORT var.
+# Also rewrite any derived vars that hardcode the same host:port
+# (CORS_ALLOWED_ORIGINS, OAuth callbacks, email confirmation links).
+#
+#   BACKEND_PORT=$((8000 + PORT_OFFSET))
+#   FRONTEND_PORT=$((3000 + PORT_OFFSET))
+#
+#   update_env_var "${WORKTREE_DIR}/.env" BACKEND_URL "http://localhost:${BACKEND_PORT}"
+#   update_env_var "${WORKTREE_DIR}/.env" FRONTEND_URL "http://localhost:${FRONTEND_PORT}"
+#   update_env_var "${WORKTREE_DIR}/.env" CORS_ALLOWED_ORIGINS "http://localhost:${FRONTEND_PORT}"
 #
 #   info "Ports — backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT}"
 

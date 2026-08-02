@@ -40,3 +40,7 @@ paths:
 
 Run `make ci` (pre-commit over the whole tree, then the smoke suite). A behaviour change means a
 new check in `test.sh`, in the same commit.
+
+**`git add` new files before you trust `make lint`.** `pre-commit run --all-files` visits
+git-*tracked* files only, so a brand-new script is silently skipped and lint goes green on a file
+nothing has checked. Stage first, then lint.

@@ -643,6 +643,19 @@ b.pem:9:${PEM_END_RSA}" passthrough
   redact_pem "mismatched labels untouched" "${PEM_BEGIN_RSA}
 KEEP_01 unrelated output
 ${PEM_END_EC}" passthrough
+
+  # Same labels, and the intervening text is letters and spaces only — both of
+  # which live in any base64-ish character class. This is why the body has to
+  # be validated line by line rather than character by character; the grep
+  # fixture above passes on punctuation alone and would not have caught it.
+  # No underscore or punctuation anywhere in the prose — those are outside any
+  # base64-ish class and would make this fixture pass for the wrong reason.
+  # Pure letters and spaces is what actually discriminates. (passthrough
+  # compares byte-for-byte, so no sentinel is needed.)
+  redact_pem "prose between same labels untouched" "${PEM_BEGIN_RSA}
+this is ordinary prose with only letters and spaces
+and another such line here
+${PEM_END_RSA}" passthrough
 fi
 
 # ---------------------------------------------------------------------------

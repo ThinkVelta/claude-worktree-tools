@@ -673,10 +673,18 @@ and another such line here
 ${PEM_END_RSA}" passthrough
 
   # Single-word lines are valid base64-ALPHABET lines, so "letters only" is not
-  # enough on its own — the body must also contain one substantial base64 run.
+  # enough on its own — the payload itself has to be checked.
   redact_pem "single-word lines untouched" "${PEM_BEGIN_RSA}
 hello
 world
+${PEM_END_RSA}" passthrough
+
+  # Nor is "contains a long run" enough: this body has a 41-character line. It
+  # is rejected because the concatenated payload is 59 characters, and base64
+  # always encodes to a multiple of 4.
+  redact_pem "long alphabetic run untouched" "${PEM_BEGIN_RSA}
+ThisIsALongIdentifierOfFortyPlusCharsHere
+SomeMoreOutputText
 ${PEM_END_RSA}" passthrough
 fi
 

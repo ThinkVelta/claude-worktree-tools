@@ -38,6 +38,37 @@
 # tojson/tostring.
 # ───────────────────────────────────────────────────────────────────────────
 
+# Is this PEM body actually a base64 payload, rather than text that merely
+# looks like one? Concatenate the body lines (dropping the RFC 1421 headers of
+# an encrypted key) and check the result is real base64: base64 alphabet, legal
+# terminal padding, and a total length divisible by 4 — which the base64
+# encoding of any byte string always is.
+#
+# This lives in jq because a regex cannot express it. Validating quartets
+# PER LINE, which is the regex-shaped version of the same idea, rejects real
+# keys: OpenSSH ed25519 bodies wrap at 70 characters and EC bodies carry
+# 27/30/36-character lines, none of them multiples of 4. Wrap width is exactly
+# what concatenating removes, so the check here is both stricter and safe.
+#
+# The length floor is on the CONCATENATED payload, so a key wrapped at a narrow
+# width still passes. The smallest real body is an ed25519 PKCS#8 at 48 bytes
+# of DER.
+#
+# Deliberately does NOT decode and inspect for a DER prefix. Only 2 of the 5
+# key types openssl and ssh-keygen emit start with DER `0x30`: an encrypted
+# body is raw ciphertext (observed `cc 50 6f bb`) and an OpenSSH body begins
+# `6f 70 65 6e` — "open", from `openssh-key-v1`. Requiring DER would stop
+# masking both, turning over-redaction into disclosure.
+def pem_body_ok:
+    ( [splits("\r?\n")]
+      | map(select(length > 0
+                   and ((startswith("Proc-Type:") or startswith("DEK-Info:")) | not)))
+      | join("") ) as $b64
+    | ($b64 | length) as $n
+    | $n >= 40
+      and ($n % 4) == 0
+      and ($b64 | test("^[A-Za-z0-9+/]+={0,2}$"));
+
 def redact:
     # ── 1. value-shape: tokens recognizable by prefix/shape anywhere ────────
     #
@@ -76,10 +107,8 @@ def redact:
   | gsub("xapp-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")           # Slack app-level token
   | gsub("SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}"; "[REDACTED-SENDGRID-KEY]")  # SendGrid
   | gsub("npm_[A-Za-z0-9]{36}"; "npm_[REDACTED]")                      # npm token
-    # PEM private-key blocks (multi-line). The body is validated LINE BY LINE,
-    # each line being base64 (no spaces), one of the two RFC 1421 headers, or
-    # blank. Three earlier attempts each failed differently, which is why it is
-    # this specific:
+    # PEM private-key blocks (multi-line). Two layers, because no single one was
+    # enough — each earlier attempt failed differently:
     #   * `[\s\S]*?` matches from ANY BEGIN marker to ANY later END marker — on
     #     a `grep -rn 'PRIVATE KEY' .` transcript that deleted 21 of 24 lines of
     #     ordinary output between two unrelated hits;
@@ -88,22 +117,20 @@ def redact:
     #     headers readmits them without re-opening the body to arbitrary text;
     #   * a character class of any kind is still too weak, because letters and
     #     spaces both belong to it — so ordinary prose between two same-labelled
-    #     markers was still swallowed. Requiring whole lines to be base64 (which
-    #     excludes the space) is what closes that.
-    # `\1` additionally forces the END label to match BEGIN, so `BEGIN RSA`
-    # cannot pair with a later `END EC`. `\r?` tolerates CRLF.
+    #     markers was still swallowed. Requiring whole LINES to be base64 (which
+    #     excludes the space) closes that, but not a body whose every line is a
+    #     single word: `hello` is valid base64 alphabet too.
     #
-    # The body must also contain at least one base64 run of 40+ characters.
-    # Without it, single-word lines ("hello", "world") are valid base64-alphabet
-    # lines and two matching markers still span them. Every real key has such a
-    # line — OpenSSL wraps at 64, OpenSSH at 70.
-    #
-    # NOT quartet-validated, deliberately. Requiring `(?:[A-Za-z0-9+/]{4})*`
-    # per line looks stricter but drops real keys: OpenSSH ed25519 bodies wrap
-    # at 70 characters and EC bodies contain 27/30/36-character lines, none of
-    # them multiples of 4. Verified against openssl- and ssh-keygen-generated
-    # RSA, encrypted RSA, EC, PKCS#8 and ed25519 keys.
-  | gsub("-----BEGIN([A-Z ]*)PRIVATE KEY-----\\r?\\n(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?[A-Za-z0-9+/=]{40,}\\r?\\n(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?-----END\\1PRIVATE KEY-----"; "[REDACTED-PRIVATE-KEY]")
+    # So the regex decides only the SHAPE — matching labels, plausible lines —
+    # and `pem_body_ok` decides whether the payload is really base64. The line
+    # validation stays in the regex even though jq revalidates: it lets the regex
+    # backtrack to a farther END when a nearer one yields an invalid body, so a
+    # real key following a stray marker is still masked. `\k<lbl>` forces the END
+    # label to match BEGIN, so `BEGIN RSA` cannot pair with a later `END EC`.
+    # `\r?` tolerates CRLF. A block that fails validation is returned via `.all`,
+    # byte for byte.
+  | gsub("(?<all>-----BEGIN(?<lbl>[A-Z ]*)PRIVATE KEY-----\\r?\\n(?<body>(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?)-----END\\k<lbl>PRIVATE KEY-----)";
+         if (.body | pem_body_ok) then "[REDACTED-PRIVATE-KEY]" else .all end)
     # URLs / connection strings
   | gsub("(?<pre>[a-zA-Z][a-zA-Z0-9+.-]*://[^/@\\s:]+:)[^/@\\s]+@"; "\(.pre)[REDACTED]@")  # inline credentials (scheme://user:PASSWORD@)
     # ── 2. key-name: value after a known sensitive key ──────────────────────

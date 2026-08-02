@@ -281,10 +281,65 @@ for skill in wt-open wt-close wt-cleanup wt-help wt-list wt-merge wt-adopt; do
 done
 
 # ---------------------------------------------------------------------------
-# Test 12: the README demo is generated, current, and leak-free
+# Test 12: worktree path derivation agrees between the script and the skills
 # ---------------------------------------------------------------------------
 
-section "Test 12 — README demo block is up to date"
+section "Test 12 — worktree path derivation is consistent"
+
+# The setup script is the single source of truth for where a worktree lands.
+# A skill that documents a different derivation sends the agent to a directory
+# that was never created, so assert the two cannot drift apart.
+
+# Substring checks would not be enough here: `printf '%s\n'` contains `printf`
+# but hashes a trailing newline, and a skill can name ${BRANCH_HASH} without
+# ever defining it. So RUN the derivation each skill documents and compare the
+# directory name it produces against the one Test 8 watched wt-setup.sh create.
+#
+# `eval` on file content is normally a smell; here the input is a tracked file
+# in this repo and running it is the only way to test what it actually computes.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  grep -qF 'WORKTREE_DIR=' "$tpl" 2>/dev/null || continue
+
+  # Pull the assignment lines out of the fenced block and bind them to the same
+  # branch name Test 8 used.
+  derivation="$(grep -E '^(SAFE_BRANCH|BRANCH_HASH|WORKTREE_DIR)=' "$tpl" | sed "s|<branch-name>|${TEST_BRANCH}|g")"
+
+  if [[ -z "$derivation" ]]; then
+    fail "${skill}: mentions WORKTREE_DIR but documents no derivation to check"
+    continue
+  fi
+
+  # Run it once against a known REPO_ROOT and report the full path it computes.
+  # WORKTREE_DIR starts empty so a derivation that never assigns it, or that
+  # references an undefined BRANCH_HASH, yields something that cannot match.
+  #
+  # Keep every comment OUT of the $( ) below. bash 3.2 (still /bin/bash on
+  # macOS) scans command substitutions naively, so an apostrophe inside a
+  # comment in there is read as an opening quote and the script dies with
+  # "unexpected EOF while looking for matching". Both variables below are read
+  # by the evaluated derivation, hence the SC2034 waiver.
+  # shellcheck disable=SC2034
+  documented_path="$(
+    REPO_ROOT="/repo"
+    WORKTREE_DIR=""
+    eval "$derivation" >/dev/null 2>&1
+    printf '%s' "$WORKTREE_DIR"
+  )"
+
+  if [[ "$documented_path" == "/repo/.claude/worktrees/${TEST_BRANCH_DIR}" ]]; then
+    pass "${skill}: documented derivation produces the path wt-setup.sh creates"
+  else
+    fail "${skill}: documented derivation gives '${documented_path}', expected '/repo/.claude/worktrees/${TEST_BRANCH_DIR}'"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Test 13: the README demo is generated, current, and leak-free
+# ---------------------------------------------------------------------------
+
+section "Test 13 — README demo block is up to date"
 
 # Running the generator here is what puts it under CI, on both OSes in the
 # matrix — otherwise a 170-line script that touches sed, cksum and mktemp (all

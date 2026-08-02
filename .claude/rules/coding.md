@@ -27,6 +27,13 @@ paths:
 - `set -euo pipefail`, quoted expansions, shellcheck-clean.
 - macOS bash 3.2 **and** Linux: no `mapfile`, no associative arrays, no `readlink -f`, no
   `grep -P`, no bare `sed -i` (BSD and GNU disagree on the backup-suffix argument).
+- **Never put a comment containing an apostrophe inside `$( … )`.** bash 3.2 — still
+  `/bin/bash` on macOS — scans command substitutions naively, reads the apostrophe as an
+  opening quote, and dies with `unexpected EOF while looking for matching`. Put the comment
+  above the substitution instead.
+- Your local `bash` is probably 5.x from Homebrew or mise, which hides every 3.2 incompatibility
+  above. Before pushing shell changes, run the suite the way macOS CI will:
+  `/bin/bash test.sh tmp/bash32` — shellcheck does not catch these.
 - Never `rm -rf`; `make clean` deliberately only prints what to remove.
 
 ## Verify before finishing

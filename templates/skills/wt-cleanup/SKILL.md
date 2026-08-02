@@ -123,8 +123,8 @@ Worktree Cleanup Report
 ═══════════════════════
 
 Stale worktrees (no commits in 7+ days, clean):
-  feat/old-experiment    .claude/worktrees/feat-old-experiment    12d ago
-  fix/typo-header        .claude/worktrees/fix-typo-header         8d ago
+  feat/old-experiment    .claude/worktrees/feat-old-experiment-258a574b  12d ago
+  fix/typo-header        .claude/worktrees/fix-typo-header-d5a403e6       8d ago
 
 Missing worktrees (directory gone, metadata remains):
   feat/deleted-thing     (path no longer exists)
@@ -138,7 +138,7 @@ Orphaned branches (no worktree, no remote):
   fix/half-done          NOT merged — review before deleting
 
 Active worktrees (no action needed):
-  feat/current-work      .claude/worktrees/feat-current-work       2h ago
+  feat/current-work      .claude/worktrees/feat-current-work-bd2ca071     2h ago
 ```
 
 If `--dry-run`, stop here.

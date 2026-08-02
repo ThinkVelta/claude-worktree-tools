@@ -337,13 +337,30 @@ else
     fi
 
     # A pattern that matches nothing would make every check below vacuous, so
-    # prove it rejects foreign roots and accepts the masked fixture.
-    if printf 'Path: /opt/company/repo\n' | grep -qE "$ABSOLUTE_PATH_RE" &&
-      printf 'Path: /Volumes/work/repo\n' | grep -qE "$ABSOLUTE_PATH_RE" &&
-      ! printf 'Path: DEMOPATH/.claude/worktrees/x\n' | grep -qE "$ABSOLUTE_PATH_RE"; then
-      pass "pattern rejects foreign roots and accepts the masked fixture"
+    # prove it discriminates. Foreign roots must be rejected whatever character
+    # precedes them — a space-only fixture hid a real gap, where paths after
+    # `[`, `,` or `{` bypassed the guard.
+    re_ok=true
+    for bad in \
+      'Path: /opt/company/repo' \
+      'Path: /Volumes/work/repo' \
+      'output[/Users/alice/project]' \
+      'path,/Volumes/private/repo' \
+      'value{/opt/company/repo}' \
+      '/home/bob/repo at line start'; do
+      printf '%s\n' "$bad" | grep -qE "$ABSOLUTE_PATH_RE" || re_ok=false
+    done
+    # …and the masked fixture, plus a URL, must NOT be rejected.
+    for good in \
+      'Path: DEMOPATH/.claude/worktrees/x' \
+      '$ ./scripts/wt-setup.sh feat/rate-limiting' \
+      'see https://example.com/a/b'; do
+      ! printf '%s\n' "$good" | grep -qE "$ABSOLUTE_PATH_RE" || re_ok=false
+    done
+    if [ "$re_ok" = true ]; then
+      pass "pattern rejects foreign paths at any boundary, accepts the fixture"
     else
-      fail "pattern does not discriminate foreign roots from the masked fixture"
+      fail "pattern does not discriminate foreign paths from the masked fixture"
     fi
 
     # Placeholder, not deletion: removing the prefix would leave /.claude/…,

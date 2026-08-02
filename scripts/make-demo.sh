@@ -38,10 +38,17 @@ END_MARKER="<!-- END GENERATED DEMO -->"
 # was not — /opt/company/repo, /srv/build, /mnt/x and /Volumes/work all sailed
 # through. Enumerating roots cannot be made complete, so don't try.
 #
-# Matches a `/` that begins a path — at line start or after whitespace, a
-# quote, `=` or `(` — followed by a path character. test.sh asserts its copy of
-# this line matches, because the previous pair of lists drifted apart.
-ABSOLUTE_PATH_RE='(^|[[:space:]"'"'"':=(])/[[:alnum:]_.-]'
+# Matches a `/` that begins a path: at line start, or after any character that
+# cannot itself be part of a path. Enumerating the boundary characters instead
+# (whitespace, quote, `=`, `(`) left `output[/Users/alice]`, `path,/Volumes/x`
+# and `value{/opt/y}` slipping through — the same "enumerate what I thought of"
+# mistake as the earlier root list, one level down.
+#
+# `/` is excluded from the boundary class on purpose, so `https://host/path`
+# does not read as an absolute path.
+#
+# test.sh reads this declaration rather than keeping a copy.
+ABSOLUTE_PATH_RE='(^|[^[:alnum:]_./-])/[[:alnum:]_.-]'
 
 WRITE=false
 KEEP_ON_FAILURE=false

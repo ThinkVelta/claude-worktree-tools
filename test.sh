@@ -592,6 +592,8 @@ KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
   PEM_BEGIN_RSA="${D5}BEGIN RSA ${KW}${D5}" # blacklists never appears here
   PEM_END_RSA="${D5}END RSA ${KW}${D5}"
   PEM_END_EC="${D5}END EC ${KW}${D5}"
+  PEM_BEGIN="${D5}BEGIN ${KW}${D5}" # unlabelled PKCS#8 form
+  PEM_END="${D5}END ${KW}${D5}"
 
   redact_pem() { # <label> <body> <expect: masked|passthrough>
     local label="$1" body="$2" expect="$3" payload out stdout_out
@@ -621,8 +623,12 @@ KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
     fi
   }
 
+  # Body lines are 64 characters, the width openssl actually wraps at. Earlier
+  # revisions of these fixtures used 12-20 character bodies, which no real key
+  # has, and so could not detect a rule that requires a substantial base64 line.
   redact_pem "plain PEM masked" "${PEM_BEGIN_RSA}
-MIIEowIBAAKCAQEA1234
+MIIEowIBAAKCAQEAr4V2mCVJ0kFtLqPZ8Nx3QwErTyUiOpAsDfGhJkLzXcVbNm12
+QwErTyUiOpAsDfGhJkLzXcVbNm34
 ${PEM_END_RSA}
 KEEP_01" masked
 
@@ -630,8 +636,17 @@ KEEP_01" masked
 Proc-Type: 4,ENCRYPTED
 DEK-Info: AES-256-CBC,0123456789ABCDEF
 
+MIIEowIBAAKCAQEAr4V2mCVJ0kFtLqPZ8Nx3QwErTyUiOpAsDfGhJkLzXcVbNm12
 QUJDREVGR0g=
 ${PEM_END_RSA}
+KEEP_01" masked
+
+  # The smallest real private key shape: an ed25519 PKCS#8 body is 48 bytes of
+  # DER, one single 64-character base64 line. Nothing legitimate is shorter, so
+  # this pins the low end of the length requirement.
+  redact_pem "minimal single-line key masked" "${PEM_BEGIN}
+MC4CAQAwBQYDK2VwBCIEIHqLmNoPqRsTuVwXyZ0123456789AbCdEfGhIjKlMnOp
+${PEM_END}
 KEEP_01" masked
 
   # Two unrelated grep hits must not be paired up and everything between them
@@ -655,6 +670,13 @@ ${PEM_END_EC}" passthrough
   redact_pem "prose between same labels untouched" "${PEM_BEGIN_RSA}
 this is ordinary prose with only letters and spaces
 and another such line here
+${PEM_END_RSA}" passthrough
+
+  # Single-word lines are valid base64-ALPHABET lines, so "letters only" is not
+  # enough on its own — the body must also contain one substantial base64 run.
+  redact_pem "single-word lines untouched" "${PEM_BEGIN_RSA}
+hello
+world
 ${PEM_END_RSA}" passthrough
 fi
 

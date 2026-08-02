@@ -92,7 +92,18 @@ def redact:
     #     excludes the space) is what closes that.
     # `\1` additionally forces the END label to match BEGIN, so `BEGIN RSA`
     # cannot pair with a later `END EC`. `\r?` tolerates CRLF.
-  | gsub("-----BEGIN([A-Z ]*)PRIVATE KEY-----\\r?\\n(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?-----END\\1PRIVATE KEY-----"; "[REDACTED-PRIVATE-KEY]")
+    #
+    # The body must also contain at least one base64 run of 40+ characters.
+    # Without it, single-word lines ("hello", "world") are valid base64-alphabet
+    # lines and two matching markers still span them. Every real key has such a
+    # line — OpenSSL wraps at 64, OpenSSH at 70.
+    #
+    # NOT quartet-validated, deliberately. Requiring `(?:[A-Za-z0-9+/]{4})*`
+    # per line looks stricter but drops real keys: OpenSSH ed25519 bodies wrap
+    # at 70 characters and EC bodies contain 27/30/36-character lines, none of
+    # them multiples of 4. Verified against openssl- and ssh-keygen-generated
+    # RSA, encrypted RSA, EC, PKCS#8 and ed25519 keys.
+  | gsub("-----BEGIN([A-Z ]*)PRIVATE KEY-----\\r?\\n(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?[A-Za-z0-9+/=]{40,}\\r?\\n(?:(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info):[^\\n]*)?\\r?\\n)*?-----END\\1PRIVATE KEY-----"; "[REDACTED-PRIVATE-KEY]")
     # URLs / connection strings
   | gsub("(?<pre>[a-zA-Z][a-zA-Z0-9+.-]*://[^/@\\s:]+:)[^/@\\s]+@"; "\(.pre)[REDACTED]@")  # inline credentials (scheme://user:PASSWORD@)
     # ── 2. key-name: value after a known sensitive key ──────────────────────

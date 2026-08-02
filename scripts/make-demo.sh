@@ -32,14 +32,29 @@ DEMO_BRANCH="feat/rate-limiting"
 BEGIN_MARKER="<!-- BEGIN GENERATED DEMO -->"
 END_MARKER="<!-- END GENERATED DEMO -->"
 
-# Absolute-path prefixes that must never survive the scrub, space separated.
-# test.sh asserts its own copy of this line matches, because the two lists
-# drifted apart once already: the generator rejected /tmp/ and the README
-# assertion did not.
-FORBIDDEN_PATHS="/Users/ /home/ /root/ /private/ /var/folders/ /tmp/"
+# A real allowlist: after the one permitted fixture path is masked out, NO
+# absolute path may remain, whatever its root. An earlier version enumerated
+# roots (/Users/, /home/, /tmp/, …) and called itself an allowlist, which it
+# was not — /opt/company/repo, /srv/build, /mnt/x and /Volumes/work all sailed
+# through. Enumerating roots cannot be made complete, so don't try.
+#
+# Matches a `/` that begins a path — at line start or after whitespace, a
+# quote, `=` or `(` — followed by a path character. test.sh asserts its copy of
+# this line matches, because the previous pair of lists drifted apart.
+ABSOLUTE_PATH_RE='(^|[[:space:]"'"'"':=(])/[[:alnum:]_.-]'
 
 WRITE=false
-[[ "${1:-}" == "--write" ]] && WRITE=true
+KEEP_ON_FAILURE=false
+for arg in "$@"; do
+  case "$arg" in
+    --write) WRITE=true ;;
+    --keep-on-failure) KEEP_ON_FAILURE=true ;;
+    *)
+      echo "usage: make-demo.sh [--write] [--keep-on-failure]" >&2
+      exit 2
+      ;;
+  esac
+done
 
 WORK="$(mktemp -d)"
 trap 'chmod -R u+w "$WORK" 2>/dev/null || true; find "$WORK" -mindepth 1 -delete 2>/dev/null || true; rmdir "$WORK" 2>/dev/null || true' EXIT
@@ -89,15 +104,21 @@ scrub() {
 # Run the real script and capture plain stdout+stderr. No tty, so no redraw.
 RAW="$WORK/raw.txt"
 (cd "$TARGET" && bash scripts/wt-setup.sh "$DEMO_BRANCH" --base main) >"$RAW" 2>&1 || {
-  # Deliberately NOT printing the capture. scrub() only rewrites the scratch
-  # path and ANSI; anything else the failing script happened to echo — $HOME,
-  # a username, an absolute path from somewhere else — has not been checked
-  # yet, and this branch runs before the privacy checks below. Keep the
-  # scratch dir instead so it can be inspected locally, and say where it is.
-  trap - EXIT
-  echo "demo run failed. Captured output withheld: it has not been privacy-checked." >&2
-  echo "Inspect it yourself at: $RAW" >&2
-  echo "(scratch dir retained for this reason — remove it when you are done)" >&2
+  # Deliberately NOT printing the capture, and NOT printing where it is.
+  # scrub() only rewrites the scratch path and ANSI; anything else the failing
+  # script echoed has not been checked yet, and this branch runs before the
+  # privacy checks below. The scratch path is not safe to print either —
+  # mktemp honours $TMPDIR, which can sit under a home directory, and this
+  # repo's CI logs are public.
+  echo "demo run failed. Captured output withheld and removed: it has not been" >&2
+  echo "privacy-checked, and neither has the path it was written to." >&2
+  if [[ "$KEEP_ON_FAILURE" == true ]]; then
+    trap - EXIT
+    echo "Retained for inspection at: $RAW" >&2
+    echo "(--keep-on-failure was passed; do not pass it in CI)" >&2
+  else
+    echo "Re-run locally with --keep-on-failure to inspect it." >&2
+  fi
   exit 1
 }
 
@@ -122,21 +143,20 @@ scrub "$RAW" >"$CLEAN"
 #     otherwise trip the guard on the fixture itself and never be able to
 #     regenerate. The same goes for any username that is a substring of the
 #     fixture — `api`, `acme`, `demo`.
+# Masked to a PLACEHOLDER, not to nothing: deleting the prefix would turn
+# /home/dev/acme-api/.claude/… into /.claude/…, which is itself an absolute
+# path and would trip the check below on the fixture it is meant to permit.
 DEMO_PREFIX="$DEMO_ROOT/$DEMO_REPO"
 MASKED="$WORK/masked.txt"
-sed "s|$DEMO_PREFIX||g" "$CLEAN" >"$MASKED"
+sed "s|$DEMO_PREFIX|DEMOPATH|g" "$CLEAN" >"$MASKED"
 
 USERNAME="$(id -un)"
 leaked=""
 
-# Absolute paths: after masking, nothing rooted in a real filesystem location
-# should remain.
-# shellcheck disable=SC2086  # deliberate word splitting: it is a probe list
-for probe in $FORBIDDEN_PATHS; do
-  if grep -qF -- "$probe" "$MASKED"; then
-    leaked="${leaked}  - an absolute path under ${probe}"$'\n'
-  fi
-done
+# Absolute paths: after masking, NO absolute path may remain, whatever its root.
+if grep -qE "$ABSOLUTE_PATH_RE" "$MASKED"; then
+  leaked="${leaked}  - an absolute path that is not the fixture"$'\n'
+fi
 
 # Machine values, also checked post-masking. Very short values are skipped:
 # masking cannot make a 1-3 character username meaningful to test, and the

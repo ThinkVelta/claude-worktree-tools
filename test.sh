@@ -323,29 +323,37 @@ else
     # an allowlist. A denylist here missed ordinary paths like
     # /home/runner/work/repo that do not happen to be followed by a dot.
     #
-    # This list must stay identical to make-demo.sh's; the assertion below
-    # enforces that, because the two drifted apart once — the generator
-    # rejected /tmp/ and this check did not, so a /tmp path would have passed
-    # the committed-README guard.
-    FORBIDDEN_PATHS="/Users/ /home/ /root/ /private/ /var/folders/ /tmp/"
-
-    if grep -qF "FORBIDDEN_PATHS=\"${FORBIDDEN_PATHS}\"" "$DEMO_SH"; then
-      pass "forbidden-path list matches the generator's"
+    # The pattern is READ FROM the generator rather than restated here. An
+    # earlier version kept a second copy and asserted the two matched; they
+    # drifted anyway (the generator rejected /tmp/, this check did not), and
+    # comparing quoted source text is brittle. One declaration, no copy.
+    gen_line="$(grep -m1 '^ABSOLUTE_PATH_RE=' "$DEMO_SH" || true)"
+    if [ -z "$gen_line" ]; then
+      fail "scripts/make-demo.sh declares no ABSOLUTE_PATH_RE to reuse"
+      ABSOLUTE_PATH_RE='(^|[[:space:]])/[[:alnum:]]'
     else
-      fail "forbidden-path list has drifted from scripts/make-demo.sh"
+      eval "$gen_line"
+      pass "absolute-path pattern read from the generator"
     fi
 
-    sed 's|/home/dev/acme-api||g' "$DEMO_ACTUAL" >"${DEMO_ACTUAL}.masked"
-    found_path=""
-    for probe in $FORBIDDEN_PATHS; do
-      if grep -qF -- "$probe" "${DEMO_ACTUAL}.masked"; then
-        found_path="${found_path} ${probe}"
-      fi
-    done
-    if [ -n "$found_path" ]; then
-      fail "README demo block contains absolute path(s) that are not the fixture:${found_path}"
+    # A pattern that matches nothing would make every check below vacuous, so
+    # prove it rejects foreign roots and accepts the masked fixture.
+    if printf 'Path: /opt/company/repo\n' | grep -qE "$ABSOLUTE_PATH_RE" &&
+      printf 'Path: /Volumes/work/repo\n' | grep -qE "$ABSOLUTE_PATH_RE" &&
+      ! printf 'Path: DEMOPATH/.claude/worktrees/x\n' | grep -qE "$ABSOLUTE_PATH_RE"; then
+      pass "pattern rejects foreign roots and accepts the masked fixture"
     else
-      pass "README demo block contains no real filesystem path"
+      fail "pattern does not discriminate foreign roots from the masked fixture"
+    fi
+
+    # Placeholder, not deletion: removing the prefix would leave /.claude/…,
+    # itself an absolute path, and fail on the fixture it is meant to permit.
+    sed 's|/home/dev/acme-api|DEMOPATH|g' "$DEMO_ACTUAL" >"${DEMO_ACTUAL}.masked"
+    if grep -qE "$ABSOLUTE_PATH_RE" "${DEMO_ACTUAL}.masked"; then
+      fail "README demo block contains an absolute path that is not the fixture"
+      grep -nE "$ABSOLUTE_PATH_RE" "${DEMO_ACTUAL}.masked" | head -3 || true
+    else
+      pass "README demo block contains no absolute path but the fixture"
     fi
   else
     fail "make-demo.sh failed or refused to emit (see ${TARGET_DIR}/demo-err.txt)"

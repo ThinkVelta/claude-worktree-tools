@@ -67,11 +67,20 @@ def redact:
   | gsub("\\bxapp-[A-Za-z0-9-]{10,}"; "[REDACTED-SLACK-TOKEN]")           # Slack app-level token
   | gsub("\\bSG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}"; "[REDACTED-SENDGRID-KEY]")  # SendGrid
   | gsub("\\bnpm_[A-Za-z0-9]{36}"; "npm_[REDACTED]")                      # npm token
-    # PEM private-key blocks (multi-line). The body is restricted to base64 +
-    # whitespace: an unrestricted `[\s\S]*?` matches from ANY BEGIN marker to
-    # ANY later END marker, so on a `grep -rn 'PRIVATE KEY' .` transcript it
-    # deleted 21 of 24 lines of ordinary output between two unrelated hits.
-  | gsub("-----BEGIN[A-Z ]*PRIVATE KEY-----[A-Za-z0-9+/=[:space:]]*?-----END[A-Z ]*PRIVATE KEY-----"; "[REDACTED-PRIVATE-KEY]")
+    # PEM private-key blocks (multi-line). Three constraints, each earning its
+    # keep:
+    #   * body limited to base64 + whitespace, because an unrestricted
+    #     `[\s\S]*?` matches from ANY BEGIN marker to ANY later END marker — on
+    #     a `grep -rn 'PRIVATE KEY' .` transcript that deleted 21 of 24 lines of
+    #     ordinary output between two unrelated hits;
+    #   * plus the two RFC 1421 header lines by name. Encrypted keys carry
+    #     `Proc-Type:` and `DEK-Info:`, whose `:` `,` `-` are not base64, so a
+    #     base64-only body silently stops redacting exactly the keys someone
+    #     bothered to encrypt. Naming the two headers admits them without
+    #     re-opening the body to arbitrary text;
+    #   * END label must match BEGIN (`\1`), so `BEGIN RSA` cannot pair with a
+    #     later `END EC` and swallow everything between.
+  | gsub("-----BEGIN([A-Z ]*)PRIVATE KEY-----(?:[A-Za-z0-9+/=[:space:]]|(?:Proc-Type|DEK-Info):[^\\n]*)*?-----END\\1PRIVATE KEY-----"; "[REDACTED-PRIVATE-KEY]")
     # URLs / connection strings
   | gsub("(?<pre>[a-zA-Z][a-zA-Z0-9+.-]*://[^/@\\s:]+:)[^/@\\s]+@"; "\(.pre)[REDACTED]@")  # inline credentials (scheme://user:PASSWORD@)
     # ── 2. key-name: value after a known sensitive key ──────────────────────

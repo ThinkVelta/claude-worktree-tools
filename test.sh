@@ -319,10 +319,15 @@ else
 
     # Belt and braces: assert on the committed README itself, not just on the
     # generator, so a hand-edited block cannot smuggle a real path back in.
-    if grep -qE '/Users/|/home/[a-z0-9_-]+/\.' "$DEMO_ACTUAL"; then
-      fail "README demo block contains a real-looking home directory"
+    # Mask the one allowed prefix, then reject ANY remaining absolute path —
+    # an allowlist. A denylist here missed ordinary paths like
+    # /home/runner/work/repo that do not happen to be followed by a dot.
+    sed 's|/home/dev/acme-api||g' "$DEMO_ACTUAL" >"${DEMO_ACTUAL}.masked"
+    if grep -qE '(/Users/|/home/|/root/|/private/|/var/folders/)' "${DEMO_ACTUAL}.masked"; then
+      fail "README demo block contains an absolute path that is not the fixture"
+      grep -nE '(/Users/|/home/|/root/|/private/|/var/folders/)' "${DEMO_ACTUAL}.masked" | head -3 || true
     else
-      pass "README demo block contains no real home directory"
+      pass "README demo block contains no real filesystem path"
     fi
   else
     fail "make-demo.sh failed or refused to emit (see ${TARGET_DIR}/demo-err.txt)"

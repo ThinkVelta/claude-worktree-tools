@@ -83,8 +83,15 @@ scrub() {
 # Run the real script and capture plain stdout+stderr. No tty, so no redraw.
 RAW="$WORK/raw.txt"
 (cd "$TARGET" && bash scripts/wt-setup.sh "$DEMO_BRANCH" --base main) >"$RAW" 2>&1 || {
-  echo "demo run failed:" >&2
-  scrub "$RAW" >&2
+  # Deliberately NOT printing the capture. scrub() only rewrites the scratch
+  # path and ANSI; anything else the failing script happened to echo — $HOME,
+  # a username, an absolute path from somewhere else — has not been checked
+  # yet, and this branch runs before the privacy checks below. Keep the
+  # scratch dir instead so it can be inspected locally, and say where it is.
+  trap - EXIT
+  echo "demo run failed. Captured output withheld: it has not been privacy-checked." >&2
+  echo "Inspect it yourself at: $RAW" >&2
+  echo "(scratch dir retained for this reason — remove it when you are done)" >&2
   exit 1
 }
 
@@ -97,19 +104,48 @@ scrub "$RAW" >"$CLEAN"
 # Anything that could identify the machine this ran on is a hard failure. The
 # generator is the only place this can be enforced, because by the time the
 # output is in the README nobody re-checks it.
+#
+# Every check runs against the output with the ALLOWED demo path masked out
+# first. That ordering matters twice over:
+#
+#   * It makes the absolute-path check an allowlist — "no absolute path may
+#     survive except the invented one" — rather than a denylist of the
+#     machine values we happened to think of.
+#   * It removes a guaranteed false positive. The demo path is /home/dev/…, so
+#     a developer whose username is `dev` (or whose $HOME is /home/dev) would
+#     otherwise trip the guard on the fixture itself and never be able to
+#     regenerate. The same goes for any username that is a substring of the
+#     fixture — `api`, `acme`, `demo`.
+DEMO_PREFIX="$DEMO_ROOT/$DEMO_REPO"
+MASKED="$WORK/masked.txt"
+sed "s|$DEMO_PREFIX||g" "$CLEAN" >"$MASKED"
 
 USERNAME="$(id -un)"
 leaked=""
-for pattern in "/Users/" "$HOME" "$USERNAME" "$WORK" "$WORK_PHYS" "/private/" "/var/folders/" "/tmp/"; do
-  [[ -z "$pattern" ]] && continue
-  if grep -qF -- "$pattern" "$CLEAN" 2>/dev/null; then
-    leaked="${leaked}  - ${pattern}"$'\n'
+
+# Absolute paths: after masking, nothing rooted in a real filesystem location
+# should remain.
+if grep -qE '(/Users/|/home/|/root/|/private/|/var/folders/|/tmp/)' "$MASKED"; then
+  for probe in "/Users/" "/home/" "/root/" "/private/" "/var/folders/" "/tmp/"; do
+    if grep -qF -- "$probe" "$MASKED"; then
+      leaked="${leaked}  - an absolute path under ${probe}"$'\n'
+    fi
+  done
+fi
+
+# Machine values, also checked post-masking. Very short values are skipped:
+# masking cannot make a 1-3 character username meaningful to test, and the
+# path allowlist above already covers the case that matters.
+for pattern in "$HOME" "$USERNAME" "$WORK" "$WORK_PHYS"; do
+  [[ -z "$pattern" || "$pattern" == "/" || ${#pattern} -lt 4 ]] && continue
+  if grep -qF -- "$pattern" "$MASKED" 2>/dev/null; then
+    leaked="${leaked}  - a machine-identifying value (${#pattern} chars)"$'\n'
   fi
 done
 
-# The demo path itself must be the invented one, nothing else.
-if ! grep -qF -- "$DEMO_ROOT/$DEMO_REPO/.claude/worktrees/" "$CLEAN"; then
-  leaked="${leaked}  - expected worktree path under $DEMO_ROOT/$DEMO_REPO is absent"$'\n'
+# The demo path itself must be present, and must be the invented one.
+if ! grep -qF -- "$DEMO_PREFIX/.claude/worktrees/" "$CLEAN"; then
+  leaked="${leaked}  - expected worktree path under $DEMO_PREFIX is absent"$'\n'
 fi
 
 # The port offset is cksum(worktree path) % 100, so the number the script

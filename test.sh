@@ -322,10 +322,28 @@ else
     # Mask the one allowed prefix, then reject ANY remaining absolute path —
     # an allowlist. A denylist here missed ordinary paths like
     # /home/runner/work/repo that do not happen to be followed by a dot.
+    #
+    # This list must stay identical to make-demo.sh's; the assertion below
+    # enforces that, because the two drifted apart once — the generator
+    # rejected /tmp/ and this check did not, so a /tmp path would have passed
+    # the committed-README guard.
+    FORBIDDEN_PATHS="/Users/ /home/ /root/ /private/ /var/folders/ /tmp/"
+
+    if grep -qF "FORBIDDEN_PATHS=\"${FORBIDDEN_PATHS}\"" "$DEMO_SH"; then
+      pass "forbidden-path list matches the generator's"
+    else
+      fail "forbidden-path list has drifted from scripts/make-demo.sh"
+    fi
+
     sed 's|/home/dev/acme-api||g' "$DEMO_ACTUAL" >"${DEMO_ACTUAL}.masked"
-    if grep -qE '(/Users/|/home/|/root/|/private/|/var/folders/)' "${DEMO_ACTUAL}.masked"; then
-      fail "README demo block contains an absolute path that is not the fixture"
-      grep -nE '(/Users/|/home/|/root/|/private/|/var/folders/)' "${DEMO_ACTUAL}.masked" | head -3 || true
+    found_path=""
+    for probe in $FORBIDDEN_PATHS; do
+      if grep -qF -- "$probe" "${DEMO_ACTUAL}.masked"; then
+        found_path="${found_path} ${probe}"
+      fi
+    done
+    if [ -n "$found_path" ]; then
+      fail "README demo block contains absolute path(s) that are not the fixture:${found_path}"
     else
       pass "README demo block contains no real filesystem path"
     fi

@@ -32,6 +32,12 @@ DEMO_BRANCH="feat/rate-limiting"
 BEGIN_MARKER="<!-- BEGIN GENERATED DEMO -->"
 END_MARKER="<!-- END GENERATED DEMO -->"
 
+# Absolute-path prefixes that must never survive the scrub, space separated.
+# test.sh asserts its own copy of this line matches, because the two lists
+# drifted apart once already: the generator rejected /tmp/ and the README
+# assertion did not.
+FORBIDDEN_PATHS="/Users/ /home/ /root/ /private/ /var/folders/ /tmp/"
+
 WRITE=false
 [[ "${1:-}" == "--write" ]] && WRITE=true
 
@@ -125,13 +131,12 @@ leaked=""
 
 # Absolute paths: after masking, nothing rooted in a real filesystem location
 # should remain.
-if grep -qE '(/Users/|/home/|/root/|/private/|/var/folders/|/tmp/)' "$MASKED"; then
-  for probe in "/Users/" "/home/" "/root/" "/private/" "/var/folders/" "/tmp/"; do
-    if grep -qF -- "$probe" "$MASKED"; then
-      leaked="${leaked}  - an absolute path under ${probe}"$'\n'
-    fi
-  done
-fi
+# shellcheck disable=SC2086  # deliberate word splitting: it is a probe list
+for probe in $FORBIDDEN_PATHS; do
+  if grep -qF -- "$probe" "$MASKED"; then
+    leaked="${leaked}  - an absolute path under ${probe}"$'\n'
+  fi
+done
 
 # Machine values, also checked post-masking. Very short values are skipped:
 # masking cannot make a 1-3 character username meaningful to test, and the

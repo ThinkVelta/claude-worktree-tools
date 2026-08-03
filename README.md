@@ -16,7 +16,7 @@ $ cd /home/dev/acme-api
 $ ./scripts/wt-setup.sh feat/rate-limiting --base main
 ==> Creating new branch 'feat/rate-limiting' from 'main'
 Preparing worktree (new branch 'feat/rate-limiting')
-HEAD is now at 40eae58 add worktree toolkit
+HEAD is now at d142b41 add worktree toolkit
 ==> Copying .env files from main repo to worktree
 ==> Copied 1 .env file(s)
 ==> Port offset for this worktree: 8

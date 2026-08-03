@@ -82,19 +82,30 @@ Before picking a default in Step 5, you MUST verify the branch's actual state. T
 git -C "<main-repo-path>" fetch --prune origin
 ```
 
-**4b. Check PR state.** This works even if the remote head branch was deleted post-merge:
+**4b. Check PR state.** This works even if the remote head branch was deleted post-merge. Ask for `headRefOid` — it is what makes the merge signal safe to act on:
 
 ```bash
-gh pr list --head "<branch>" --state all --json number,state,mergedAt --limit 1 --jq '.[0]' 2>&1
+gh pr list --head "<branch>" --state all --json number,state,mergedAt,headRefOid --limit 1 --jq '.[0]' 2>&1
 ```
 
 Interpret the result:
 
-- `state: "MERGED"` → branch landed. Record as **merged**.
 - `state: "OPEN"` → PR awaiting review. Record as **open PR**.
 - `state: "CLOSED"` and `mergedAt: null` → abandoned. Record as **closed without merge**.
 - Empty output → no PR for this branch. Fall through to 4c.
 - An error (`gh` not installed, not authenticated, no GitHub remote) → **not the same as "no PR"**. Say which it was, then fall through to 4c and rely on the local check alone.
+- `state: "MERGED"` → **do not record merged yet.** Verify the tip first, below.
+
+**A merged PR does not prove the branch as it stands now was merged.** It proves the commit GitHub merged was merged. If the branch gained commits afterwards, or the name was reused for new work, those commits are unmerged — and Step 6 would `-D` them out of existence with no warning and no reflog entry the user would think to look for. Compare the merged head against the local tip:
+
+```bash
+git -C "<main-repo-path>" rev-parse "<branch>"
+```
+
+- Equal to `headRefOid` → the branch is exactly what landed. Record as **merged**.
+- Different → the branch has moved since the PR merged. **Do not record merged.** Fall through to 4c, which tests the current commits rather than the historical ones, and say that the PR merged an older tip.
+
+This is what keeps the `-D` in Step 6 honest: it fires only when the commits about to be deleted are the same commits GitHub confirmed it merged.
 
 **4c. If 4b gave no answer, check merge status against the base branch locally.**
 
@@ -171,7 +182,7 @@ The worktree must be removed before the branch delete — `git branch -d` refuse
 
 Pick the delete flag from Step 4's recorded state:
 
-- **merged** → use `git branch -D`. Squash and rebase merges rewrite commits, so the branch's SHAs are not reachable from the base branch and `-d` refuses even though the work landed. Left alone, that orphans the branch. A verified merge — GitHub `MERGED`, or a local rev-list count of `0` — is authoritative, so force-delete is correct here.
+- **merged** → use `git branch -D`. Squash and rebase merges rewrite commits, so the branch's SHAs are not reachable from the base branch and `-d` refuses even though the work landed. Left alone, that orphans the branch. Only Step 4 can record this state, and only from a GitHub `MERGED` whose `headRefOid` equals the current tip, or a local rev-list count of `0` — both of which are statements about the commits that exist right now. Never infer it from a PR number or a branch name.
 - **open PR**, **closed without merge**, **unmerged**, **undetermined** → use `git branch -d` (safe delete). If it refuses, surface the message instead of escalating.
 
 Run it as a **single Bash call** so the `cd` lands before the removal:
@@ -219,6 +230,6 @@ Worktree closed.
 
 **Verify state, never infer it.** A branch name, a worktree's existence, and a plausible-sounding history are not evidence of what happened to a PR. Every claim about merge state or commit counts comes from a command run in this session, or is not made at all.
 
-**Default to `git branch -d` (safe delete) — but `-D` is correct when the merge is verified.** `-d` tests commit reachability, which squash and rebase merges defeat. When Step 4 recorded **merged**, use `-D`; in every other state stick with `-d` and surface the refusal rather than overriding it.
+**Default to `git branch -d` (safe delete) — `-D` only when the merge is verified against the current tip.** `-d` tests commit reachability, which squash and rebase merges defeat, so it refuses on work that has genuinely landed. `-D` removes that check entirely, which is why what justifies it must be a statement about the commits that exist *now*: `headRefOid` equal to the branch tip, or a local rev-list count of `0`. A merged PR alone is not that — a branch extended or reused after its PR merged still reports `MERGED`, and `-D` would delete the newer commits silently. In every other state use `-d` and surface the refusal rather than overriding it.
 
 **Use `git worktree remove`, not `rm -rf`.** Git tracks worktree metadata internally; removing the directory without telling git leaves stale references that cause confusing errors later. If anything goes wrong, `git worktree prune` cleans up the metadata.

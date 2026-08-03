@@ -715,6 +715,38 @@ for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
 done
 
 # ---------------------------------------------------------------------------
+# Test 16: force-delete is never documented without a tip check
+# ---------------------------------------------------------------------------
+
+section "Test 16 — 'git branch -D' is coupled to headRefOid verification"
+
+# `git branch -D` removes git's own "is this merged?" safety check, so whatever
+# a skill offers in its place has to be a statement about the commits that exist
+# right now. A merged PR is not: a branch extended or reused after its PR merged
+# still reports MERGED, and force-deleting on that signal destroys the newer
+# commits silently. Comparing the PR's headRefOid against the branch tip is what
+# closes that, so the two must not drift apart.
+#
+# Only fenced blocks count — those are what the agent runs. Naming `git branch -D`
+# in prose is the opposite of the hazard: wt-cleanup deletes with `-d` and tells
+# the user the force variant exists, which is exactly the behaviour we want.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$tpl")"
+  case "$fenced" in
+    *"branch -D"*) ;;
+    *) continue ;;
+  esac
+
+  if grep -qF 'headRefOid' "$tpl" 2>/dev/null; then
+    pass "${skill}: force-delete is paired with a tip check"
+  else
+    fail "${skill}: runs 'git branch -D' with no headRefOid tip verification"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

@@ -718,33 +718,109 @@ done
 # Test 16: force-delete is never documented without a tip check
 # ---------------------------------------------------------------------------
 
-section "Test 16 — 'git branch -D' is coupled to headRefOid verification"
+section "Test 16 — 'git branch -D' is coupled to a headRefOid tip comparison"
 
 # `git branch -D` removes git's own "is this merged?" safety check, so whatever
 # a skill offers in its place has to be a statement about the commits that exist
 # right now. A merged PR is not: a branch extended or reused after its PR merged
 # still reports MERGED, and force-deleting on that signal destroys the newer
-# commits silently. Comparing the PR's headRefOid against the branch tip is what
-# closes that, so the two must not drift apart.
+# commits silently. Requesting headRefOid and COMPARING it against the branch tip
+# is what closes that.
 #
-# Only fenced blocks count — those are what the agent runs. Naming `git branch -D`
-# in prose is the opposite of the hazard: wt-cleanup deletes with `-d` and tells
-# the user the force variant exists, which is exactly the behaviour we want.
+# The comparison is what's required, not the word. An earlier draft of this check
+# passed on any file merely mentioning headRefOid, so deleting the rev-parse and
+# leaving the gh flag behind would have kept it green. The fixtures at the end run
+# the same predicate over deliberately broken content to prove it still fails.
+
+# Returns 0 when the file is safe, 1 when it force-deletes without a tip check.
+# Only fenced blocks count for the -D itself — those are what the agent runs.
+# Naming `git branch -D` in prose is the opposite of the hazard: wt-cleanup
+# deletes with `-d` and tells the user the force variant exists.
+has_fenced_force_delete() {
+  local f="$1" fenced
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$f")"
+  case "$fenced" in
+    *"branch -D"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+force_delete_guarded() {
+  local f="$1"
+  has_fenced_force_delete "$f" || return 0
+  grep -qF 'headRefOid' "$f" || return 1
+  grep -qF 'rev-parse "<branch>"' "$f" || return 1
+  return 0
+}
 
 for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
   skill="$(basename "$(dirname "$tpl")")"
-  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$tpl")"
-  case "$fenced" in
-    *"branch -D"*) ;;
-    *) continue ;;
-  esac
-
-  if grep -qF 'headRefOid' "$tpl" 2>/dev/null; then
-    pass "${skill}: force-delete is paired with a tip check"
+  if ! has_fenced_force_delete "$tpl"; then
+    pass "${skill}: no force-delete to guard"
+  elif force_delete_guarded "$tpl"; then
+    pass "${skill}: force-delete is paired with a tip comparison"
   else
-    fail "${skill}: runs 'git branch -D' with no headRefOid tip verification"
+    fail "${skill}: runs 'git branch -D' without comparing headRefOid to the branch tip"
   fi
 done
+
+# Mutation fixtures: the predicate above is only worth anything if it can fail.
+FIXTURE_DIR="${TARGET_DIR}/.test-force-delete"
+mkdir -p "$FIXTURE_DIR"
+
+cat >"$FIXTURE_DIR/unguarded.md" <<'FIXTURE'
+Remove the branch:
+
+```bash
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/mentions-only.md" <<'FIXTURE'
+We ask gh for headRefOid, then remove the branch:
+
+```bash
+gh pr list --json number,state,headRefOid
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/guarded.md" <<'FIXTURE'
+Verify the tip, then remove the branch:
+
+```bash
+gh pr list --json number,state,headRefOid
+git -C "<main-repo-path>" rev-parse "<branch>"
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/prose-only.md" <<'FIXTURE'
+Skip unmerged orphans — tell the user about `git branch -D` if they want to force.
+
+```bash
+git branch -d "<branch>"
+```
+FIXTURE
+
+check_fixture() {
+  local desc="$1" file="$2" want="$3"
+  if force_delete_guarded "$file"; then
+    got="safe"
+  else
+    got="flagged"
+  fi
+  if [[ "$got" == "$want" ]]; then
+    pass "fixture: $desc -> $got"
+  else
+    fail "fixture: $desc -> $got (expected $want)"
+  fi
+}
+
+check_fixture "bare force-delete" "$FIXTURE_DIR/unguarded.md" flagged
+check_fixture "headRefOid requested but never compared" "$FIXTURE_DIR/mentions-only.md" flagged
+check_fixture "tip compared before force-delete" "$FIXTURE_DIR/guarded.md" safe
+check_fixture "force-delete named only in prose" "$FIXTURE_DIR/prose-only.md" safe
 
 # ---------------------------------------------------------------------------
 # Summary

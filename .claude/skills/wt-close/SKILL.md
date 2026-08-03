@@ -82,6 +82,10 @@ Before picking a default in Step 5, you MUST verify the branch's actual state. T
 git -C "<main-repo-path>" fetch --prune origin
 ```
 
+**If the fetch fails, report the error and stop using remote-tracking refs.** Steps 4c and 4d read `origin/<base>` and `origin/<branch>`; when those are stale, both give confident wrong answers. 4c can return `0` against a base the real remote has since moved or rewritten, which records **merged** for work that exists nowhere but this machine — and Step 6 then force-deletes it. 4d can report zero unpushed commits for a branch that has never been pushed.
+
+After a failed fetch, record the state as **undetermined** and skip 4c and 4d entirely. The one exception is 4b: it queries GitHub directly rather than through local refs, so a `MERGED` PR whose `headRefOid` matches the local tip is still trustworthy — that check does not depend on the fetch having succeeded.
+
 **4b. Check PR state.** This works even if the remote head branch was deleted post-merge. Ask for `headRefOid` — it is what makes the merge signal safe to act on:
 
 ```bash

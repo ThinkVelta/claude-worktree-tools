@@ -433,6 +433,262 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 14: the secret-redaction hook actually redacts
+# ---------------------------------------------------------------------------
+
+section "Test 14 — redact-secrets hook masks without destroying"
+
+# This hook failed silently in four different ways across the org before anyone
+# noticed, because a broken filter and a healthy one look identical from
+# outside: emitting nothing on exit 0 is its DESIGNED "nothing to redact"
+# signal. So assert behaviour, not shape.
+#
+# Sentinels: SECRET_SENTINEL must never survive; every KEEP_nn must.
+
+REDACT_SH="${SCRIPT_DIR}/.claude/hooks/redact-secrets.sh"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "  (skipped: jq not installed — the hook fails open without it by design)"
+elif [ ! -f "$REDACT_SH" ]; then
+  fail ".claude/hooks/redact-secrets.sh is missing"
+else
+  SECRET_SENTINEL="Qw7Ab9XyZ2Lm4Np8"
+
+  redact_case() { # <label> <stdout literal> <expect: masked|passthrough>
+    local label="$1" body="$2" expect="$3" payload out stdout_out
+    payload=$(jq -n --arg s "$body" \
+      '{hook_event_name:"PostToolUse",tool_name:"Bash",
+        tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+    out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+
+    if [ -z "$out" ]; then
+      stdout_out="$body" # nothing emitted => Claude Code keeps the original
+    else
+      stdout_out=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+      if [ -z "$stdout_out" ]; then
+        fail "${label}: hook emitted output that is not a valid replacement"
+        return
+      fi
+    fi
+
+    if [ "$expect" = "masked" ] && printf '%s' "$stdout_out" | grep -qF "$SECRET_SENTINEL"; then
+      fail "${label}: secret survived redaction"
+      return
+    fi
+    # Secret-free output must come back byte-identical. Checking only the line
+    # count and one sentinel would let over-redaction through — the `sk-` rule
+    # firing inside ordinary words did exactly that, and looked clean.
+    if [ "$expect" = "passthrough" ] && [ "$stdout_out" != "$body" ]; then
+      fail "${label}: secret-free output was modified"
+      return
+    fi
+    # Nothing benign may be destroyed, and no line may vanish.
+    local want_lines got_lines
+    want_lines=$(printf '%s' "$body" | grep -c '')
+    got_lines=$(printf '%s' "$stdout_out" | grep -c '')
+    if [ "$want_lines" != "$got_lines" ]; then
+      fail "${label}: line count changed ${want_lines} -> ${got_lines}"
+      return
+    fi
+    if printf '%s' "$body" | grep -qF 'KEEP_01' && ! printf '%s' "$stdout_out" | grep -qF 'KEEP_01'; then
+      fail "${label}: destroyed benign output"
+      return
+    fi
+    pass "$label"
+  }
+
+  # The four forms that leaked or destroyed output in other repos' copies.
+  redact_case "plain KEY=VALUE" "AUTH_SECRET=${SECRET_SENTINEL}
+KEEP_01" masked
+  redact_case "JSON config dump" "{\"AUTH_SECRET\": \"${SECRET_SENTINEL}\"}
+KEEP_01" masked
+  redact_case "YAML quoted value" "AUTH_SECRET: \"${SECRET_SENTINEL}\"
+KEEP_01" masked
+  redact_case "tab separator" "$(printf 'AUTH_SECRET\t=\t%s\nKEEP_01' "$SECRET_SENTINEL")" masked
+  # Secret-free output must come through untouched. This is the over-redaction
+  # guard: `sk-` used to fire inside ordinary words.
+  redact_case "no secret present" "risk-management-dashboard-v2
+disk-utilization-report-2024
+KEEP_01" passthrough
+
+  # …and the other direction. A distinctive token concatenated after a word
+  # character must STILL be masked: putting `\b` on every prefix (rather than
+  # just the collision-prone sk- ones) turned each of these into a bypass.
+  redact_concat() { # <label> <token>
+    local label="$1" tok="$2" payload out stdout_out
+    payload=$(jq -n --arg s "credential_${tok}
+KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
+               tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+    out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+    if [ -z "$out" ]; then
+      fail "${label}: concatenated token was not redacted at all"
+      return
+    fi
+    stdout_out=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+    if printf '%s' "$stdout_out" | grep -qF "$tok"; then
+      fail "${label}: concatenated token survived"
+    elif ! printf '%s' "$stdout_out" | grep -qF 'KEEP_01'; then
+      fail "${label}: destroyed benign output"
+    else
+      pass "$label"
+    fi
+  }
+
+  redact_concat "concatenated github_pat_ masked" "github_pat_ABCDEFGHIJKLMNOPQRSTUV"
+  redact_concat "concatenated ghp_ masked" "ghp_ABCDEFGHIJKLMNOPQRSTUVWX01"
+  redact_concat "concatenated AKIA masked" "AKIAIOSFODNN7EXAMPLE"
+
+  # The value group is a tempered token. Both halves of that need pinning, or
+  # it can revert to a plain class without the suite noticing.
+  #
+  # (a) it must not cross a LITERAL backslash-n — two characters, as emitted by
+  #     docker inspect / kubectl -o json / gh api. Note the double quotes: bash
+  #     does not interpret \n there, so this really is backslash + n.
+  tempered_body="AUTH_SECRET=${SECRET_SENTINEL}\nKEEP_01 KEEP_02"
+  payload=$(jq -n --arg s "$tempered_body" \
+    '{hook_event_name:"PostToolUse",tool_name:"Bash",
+      tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+  out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+  got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+  #     KEEP_01 is the discriminating sentinel, not KEEP_02: an untempered
+  #     class stops at the first real SPACE, so it swallows `\nKEEP_01` but
+  #     leaves KEEP_02 standing. Asserting on KEEP_02 would pass either way.
+  if [ -z "$out" ]; then
+    fail "literal backslash-n: secret was not redacted at all"
+  elif printf '%s' "$got" | grep -qF "$SECRET_SENTINEL"; then
+    fail "literal backslash-n: secret survived"
+  elif ! printf '%s' "$got" | grep -qF 'KEEP_01'; then
+    fail "literal backslash-n: content after the escape was swallowed"
+  else
+    pass "literal backslash-n does not swallow what follows"
+  fi
+
+  # (b) a LONE backslash inside a secret must stay inside the match, so the
+  #     value is masked in full. Excluding all backslashes (an earlier attempt)
+  #     leaked everything after the first one.
+  backslash_tail="zAbQwLm4Np8"
+  payload=$(jq -n --arg s "AUTH_SECRET=Xy\\${backslash_tail}
+KEEP_01" '{hook_event_name:"PostToolUse",tool_name:"Bash",
+            tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+  out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+  got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+  if [ -z "$out" ]; then
+    fail "lone backslash: secret was not redacted at all"
+  elif printf '%s' "$got" | grep -qF "$backslash_tail"; then
+    fail "lone backslash: value leaked its tail after the backslash"
+  elif ! printf '%s' "$got" | grep -qF 'KEEP_01'; then
+    fail "lone backslash: destroyed benign output"
+  else
+    pass "lone backslash in a secret is masked in full"
+  fi
+
+  # PEM blocks. The encrypted form carries Proc-Type/DEK-Info headers whose
+  # `:` `,` `-` are not base64 — a base64-only body stops redacting exactly the
+  # keys someone bothered to encrypt, which is the wrong way round.
+  # Assembled at runtime: a literal PEM header in this file would be caught by
+  # the detect-private-key hook, which is working as intended.
+  D5="-----"
+  KW="PRIVATE KEY"                          # split from the label so the phrase detect-private-key
+  PEM_BEGIN_RSA="${D5}BEGIN RSA ${KW}${D5}" # blacklists never appears here
+  PEM_END_RSA="${D5}END RSA ${KW}${D5}"
+  PEM_END_EC="${D5}END EC ${KW}${D5}"
+  PEM_BEGIN="${D5}BEGIN ${KW}${D5}" # unlabelled PKCS#8 form
+  PEM_END="${D5}END ${KW}${D5}"
+
+  redact_pem() { # <label> <body> <expect: masked|passthrough>
+    local label="$1" body="$2" expect="$3" payload out stdout_out
+    payload=$(jq -n --arg s "$body" \
+      '{hook_event_name:"PostToolUse",tool_name:"Bash",
+        tool_response:{stdout:$s,stderr:"",interrupted:false}}')
+    out=$(printf '%s' "$payload" | "$REDACT_SH" 2>/dev/null)
+    if [ -z "$out" ]; then
+      stdout_out="$body"
+    else
+      stdout_out=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedToolOutput.stdout' 2>/dev/null)
+    fi
+    if [ "$expect" = "masked" ]; then
+      if printf '%s' "$stdout_out" | grep -qF "PRIVATE KEY${D5}"; then
+        fail "${label}: private key block survived"
+      elif ! printf '%s' "$stdout_out" | grep -qF 'KEEP_01'; then
+        fail "${label}: destroyed benign output"
+      else
+        pass "$label"
+      fi
+    else
+      if [ "$stdout_out" != "$body" ]; then
+        fail "${label}: unrelated output was modified"
+      else
+        pass "$label"
+      fi
+    fi
+  }
+
+  # Body lines are 64 characters, the width openssl actually wraps at. Earlier
+  # revisions of these fixtures used 12-20 character bodies, which no real key
+  # has, and so could not detect a rule that requires a substantial base64 line.
+  redact_pem "plain PEM masked" "${PEM_BEGIN_RSA}
+MIIEowIBAAKCAQEAr4V2mCVJ0kFtLqPZ8Nx3QwErTyUiOpAsDfGhJkLzXcVbNm12
+QwErTyUiOpAsDfGhJkLzXcVbNm34
+${PEM_END_RSA}
+KEEP_01" masked
+
+  redact_pem "encrypted PEM masked" "${PEM_BEGIN_RSA}
+Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-256-CBC,0123456789ABCDEF
+
+MIIEowIBAAKCAQEAr4V2mCVJ0kFtLqPZ8Nx3QwErTyUiOpAsDfGhJkLzXcVbNm12
+QUJDREVGR0g=
+${PEM_END_RSA}
+KEEP_01" masked
+
+  # The smallest real private key shape: an ed25519 PKCS#8 body is 48 bytes of
+  # DER, one single 64-character base64 line. Nothing legitimate is shorter, so
+  # this pins the low end of the length requirement.
+  redact_pem "minimal single-line key masked" "${PEM_BEGIN}
+MC4CAQAwBQYDK2VwBCIEIHqLmNoPqRsTuVwXyZ0123456789AbCdEfGhIjKlMnOp
+${PEM_END}
+KEEP_01" masked
+
+  # Two unrelated grep hits must not be paired up and everything between them
+  # deleted; nor may a BEGIN pair with a differently-labelled END.
+  redact_pem "grep transcript untouched" "a.pem:1:${PEM_BEGIN_RSA}
+KEEP_01 docs/notes.md:44 mentions keys
+b.pem:9:${PEM_END_RSA}" passthrough
+
+  redact_pem "mismatched labels untouched" "${PEM_BEGIN_RSA}
+KEEP_01 unrelated output
+${PEM_END_EC}" passthrough
+
+  # Same labels, and the intervening text is letters and spaces only — both of
+  # which live in any base64-ish character class. This is why the body has to
+  # be validated line by line rather than character by character; the grep
+  # fixture above passes on punctuation alone and would not have caught it.
+  # No underscore or punctuation anywhere in the prose — those are outside any
+  # base64-ish class and would make this fixture pass for the wrong reason.
+  # Pure letters and spaces is what actually discriminates. (passthrough
+  # compares byte-for-byte, so no sentinel is needed.)
+  redact_pem "prose between same labels untouched" "${PEM_BEGIN_RSA}
+this is ordinary prose with only letters and spaces
+and another such line here
+${PEM_END_RSA}" passthrough
+
+  # Single-word lines are valid base64-ALPHABET lines, so "letters only" is not
+  # enough on its own — the payload itself has to be checked.
+  redact_pem "single-word lines untouched" "${PEM_BEGIN_RSA}
+hello
+world
+${PEM_END_RSA}" passthrough
+
+  # Nor is "contains a long run" enough: this body has a 41-character line. It
+  # is rejected because the concatenated payload is 59 characters, and base64
+  # always encodes to a multiple of 4.
+  redact_pem "long alphabetic run untouched" "${PEM_BEGIN_RSA}
+ThisIsALongIdentifierOfFortyPlusCharsHere
+SomeMoreOutputText
+${PEM_END_RSA}" passthrough
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

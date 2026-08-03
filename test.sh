@@ -689,6 +689,32 @@ ${PEM_END_RSA}" passthrough
 fi
 
 # ---------------------------------------------------------------------------
+# Test 15: skills never pass a bare shell variable to `git -C`
+# ---------------------------------------------------------------------------
+
+section "Test 15 — skills do not rely on shell state across Bash calls"
+
+# Claude Code's Bash tool does not persist shell state between calls, so a
+# variable a skill assigns in one fenced block is empty by the next one. That
+# would be survivable if it failed loudly. It does not: `git -C ""` exits 0 and
+# operates on whatever repo the current directory belongs to, so the command
+# reports success while acting on the wrong repository. `git -C "" worktree
+# prune` in a wt-close run is a prune of the user's main repo, silently.
+#
+# `$(...)` is fine — a command substitution resolves inside the same call — so
+# match only `"$NAME"`, not `"$(...)"`.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  if grep -qE 'git -C "\$[A-Za-z_]' "$tpl" 2>/dev/null; then
+    fail "${skill}: passes a bare shell variable to git -C (empty in the next Bash call)"
+    grep -nE 'git -C "\$[A-Za-z_]' "$tpl" | sed 's/^/        /'
+  else
+    pass "${skill}: no cross-call shell variables in git -C"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

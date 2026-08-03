@@ -96,8 +96,8 @@ Interpret the result:
 
 - `state: "OPEN"` → PR awaiting review. Record as **open PR**.
 - `state: "CLOSED"` and `mergedAt: null` → abandoned. Record as **closed without merge**.
-- Empty output → no PR for this branch. Fall through to 4c.
-- An error (`gh` not installed, not authenticated, no GitHub remote) → **not the same as "no PR"**. Say which it was, then fall through to 4c and rely on the local check alone.
+- Empty output → no PR for this branch. Hand off to 4c.
+- An error (`gh` not installed, not authenticated, no GitHub remote) → **not the same as "no PR"**. Say which it was, then hand off to 4c and rely on the local check alone.
 - `state: "MERGED"` → **do not record merged yet.** Verify the tip first, below.
 
 **A merged PR does not prove the branch as it stands now was merged.** It proves the commit GitHub merged was merged. If the branch gained commits afterwards, or the name was reused for new work, those commits are unmerged — and Step 6 would `-D` them out of existence with no warning and no reflog entry the user would think to look for.
@@ -116,13 +116,15 @@ fi
 ```
 
 - `verified-merged` → the branch is exactly what landed. Record as **merged**.
-- `not-verified-merged` → the branch has moved since the PR merged, or no merged PR exists. **Do not record merged.** Fall through to 4c, which tests the current commits rather than the historical ones, and tell the user the PR merged an older tip.
+- `not-verified-merged` → the branch has moved since the PR merged, or no merged PR exists. **Do not record merged.** Hand off to 4c, which tests the current commits rather than the historical ones, and tell the user the PR merged an older tip.
 
 Read the printed verdict rather than comparing two SHAs by eye — a mis-read here force-deletes commits. This is what keeps the `-D` in Step 6 honest: it fires only when the commits about to be deleted are the same commits GitHub confirmed it merged.
 
 **Every ref that inspects the branch is fully qualified, here and in 4c and 4d.** `git rev-parse <name>` walks `refs/tags/` *before* `refs/heads/`, so if a tag shares the branch's name the bare form silently resolves to the tag. A tag left on the old merged commit would then match `headRefOid`, print `verified-merged`, and Step 6 would force-delete a branch carrying newer work. `refs/heads/<branch>` and `refs/remotes/origin/<base>` cannot be captured that way. Keep them qualified even though it reads more verbosely.
 
 **4c. If 4b gave no answer, check merge status against the base branch locally.**
+
+> **Gate — check this before anything else in 4c.** If 4a's fetch failed, stop here: record **undetermined**, skip the rest of 4c and all of 4d, and go to Step 5. Every hand-off into 4c is subject to this, including the ones 4b names. 4c reads `refs/remotes/origin/<base>`, and on a stale ref a `0` count means "merged into the base as this machine last saw it", which is not the same claim and is the one that authorises `-D`.
 
 Resolve the base branch first — do not assume `main`:
 
@@ -142,7 +144,9 @@ git -C "<main-repo-path>" rev-list --count "refs/remotes/origin/<base>..refs/hea
 - Count `> 0` → branch has unmerged work. Record as **unmerged**.
 - Command errors with `unknown revision` → `origin/<base>` is missing locally; 4a should have fetched it. Report that rather than recording a state.
 
-**4d. Count unpushed commits — only if the remote branch still exists:**
+**4d. Count unpushed commits — only if 4a's fetch succeeded and the remote branch still exists.**
+
+Same gate as 4c: on a failed fetch, skip this and report "could not check — fetch failed" rather than a number. A stale `refs/remotes/origin/<branch>` reports zero unpushed commits for a branch that was never pushed.
 
 ```bash
 git -C "<main-repo-path>" show-ref --verify --quiet "refs/remotes/origin/<branch>" && \

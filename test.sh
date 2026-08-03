@@ -903,6 +903,42 @@ for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
 done
 
 # ---------------------------------------------------------------------------
+# Test 18: the stale-ref gate precedes the commands it guards
+# ---------------------------------------------------------------------------
+
+section "Test 18 — wt-close gates 4c on the fetch before running it"
+
+# 4a says a failed fetch invalidates 4c and 4d, but that instruction lived only
+# in 4a while 4b told the agent to fall through to 4c regardless — the document
+# contradicted itself and the unsafe reading was the explicitly written one.
+# Stating the gate is not enough; it has to come before the commands it guards,
+# because an agent acts on the first runnable thing it reaches.
+
+WT_CLOSE_TPL="${SCRIPT_DIR}/templates/skills/wt-close/SKILL.md"
+section_4c="$(awk '/^\*\*4c\./ { inside = 1 } /^\*\*4d\./ { inside = 0 } inside' "$WT_CLOSE_TPL")"
+
+if [[ -z "$section_4c" ]]; then
+  fail "wt-close: could not locate section 4c"
+else
+  # `|| true` is load-bearing: under `set -euo pipefail` a grep that matches
+  # nothing fails the whole pipeline and aborts the suite at this assignment.
+  # Without it, a missing gate — the exact thing this test looks for — killed the
+  # run instead of reporting a failure.
+  gate_at="$(printf '%s\n' "$section_4c" | grep -n 'fetch failed' | head -1 | cut -d: -f1 || true)"
+  cmd_at="$(printf '%s\n' "$section_4c" | grep -n '^```' | head -1 | cut -d: -f1 || true)"
+
+  if [[ -z "$gate_at" ]]; then
+    fail "wt-close: section 4c states no fetch-failure gate"
+  elif [[ -z "$cmd_at" ]]; then
+    pass "wt-close: section 4c has a gate and no unguarded commands"
+  elif [[ "$gate_at" -lt "$cmd_at" ]]; then
+    pass "wt-close: 4c's fetch gate precedes its first command (line $gate_at < $cmd_at)"
+  else
+    fail "wt-close: 4c runs a command at line $cmd_at before its gate at line $gate_at"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

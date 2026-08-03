@@ -689,6 +689,256 @@ ${PEM_END_RSA}" passthrough
 fi
 
 # ---------------------------------------------------------------------------
+# Test 15: skills never pass a bare shell variable to `git -C`
+# ---------------------------------------------------------------------------
+
+section "Test 15 — skills do not rely on shell state across Bash calls"
+
+# Claude Code's Bash tool does not persist shell state between calls, so a
+# variable a skill assigns in one fenced block is empty by the next one. That
+# would be survivable if it failed loudly. It does not: `git -C ""` exits 0 and
+# operates on whatever repo the current directory belongs to, so the command
+# reports success while acting on the wrong repository. `git -C "" worktree
+# prune` in a wt-close run is a prune of the user's main repo, silently.
+#
+# `$(...)` is fine — a command substitution resolves inside the same call — so
+# match only `"$NAME"`, not `"$(...)"`.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  if grep -qE 'git -C "\$[A-Za-z_]' "$tpl" 2>/dev/null; then
+    fail "${skill}: passes a bare shell variable to git -C (empty in the next Bash call)"
+    grep -nE 'git -C "\$[A-Za-z_]' "$tpl" | sed 's/^/        /'
+  else
+    pass "${skill}: no cross-call shell variables in git -C"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Test 16: force-delete is never documented without a tip check
+# ---------------------------------------------------------------------------
+
+section "Test 16 — 'git branch -D' is coupled to a headRefOid tip comparison"
+
+# `git branch -D` removes git's own "is this merged?" safety check, so whatever
+# a skill offers in its place has to be a statement about the commits that exist
+# right now. A merged PR is not: a branch extended or reused after its PR merged
+# still reports MERGED, and force-deleting on that signal destroys the newer
+# commits silently. Requesting headRefOid and COMPARING it against the branch tip
+# is what closes that.
+#
+# The comparison is what's required, not the word. An earlier draft of this check
+# passed on any file merely mentioning headRefOid, so deleting the rev-parse and
+# leaving the gh flag behind would have kept it green. The fixtures at the end run
+# the same predicate over deliberately broken content to prove it still fails.
+
+# Returns 0 when the file is safe, 1 when it force-deletes without a tip check.
+# Only fenced blocks count for the -D itself — those are what the agent runs.
+# Naming `git branch -D` in prose is the opposite of the hazard: wt-cleanup
+# deletes with `-d` and tells the user the force variant exists.
+has_fenced_force_delete() {
+  local f="$1" fenced
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$f")"
+  case "$fenced" in
+    *"branch -D"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Both inputs must be fetched AND actually compared, inside a fenced block. An
+# earlier revision only checked that the two strings appeared somewhere in the
+# file, so deleting the comparison and leaving the commands behind kept it green.
+# The equality pattern is structural — any two shell variables tested with `=` —
+# rather than the specific names this skill happens to use.
+force_delete_guarded() {
+  local f="$1" fenced
+  has_fenced_force_delete "$f" || return 0
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$f")"
+  printf '%s\n' "$fenced" | grep -qF 'headRefOid' || return 1
+  printf '%s\n' "$fenced" | grep -qF 'rev-parse' || return 1
+  printf '%s\n' "$fenced" |
+    grep -qE '\[ +"\$[A-Za-z_][A-Za-z_0-9]*" *= *"\$[A-Za-z_][A-Za-z_0-9]*" +\]' || return 1
+  return 0
+}
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  if ! has_fenced_force_delete "$tpl"; then
+    pass "${skill}: no force-delete to guard"
+  elif force_delete_guarded "$tpl"; then
+    pass "${skill}: force-delete is paired with a tip comparison"
+  else
+    fail "${skill}: runs 'git branch -D' without comparing headRefOid to the branch tip"
+  fi
+done
+
+# Mutation fixtures: the predicate above is only worth anything if it can fail.
+FIXTURE_DIR="${TARGET_DIR}/.test-force-delete"
+mkdir -p "$FIXTURE_DIR"
+
+cat >"$FIXTURE_DIR/unguarded.md" <<'FIXTURE'
+Remove the branch:
+
+```bash
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/mentions-only.md" <<'FIXTURE'
+We ask gh for headRefOid, then remove the branch:
+
+```bash
+gh pr list --json number,state,headRefOid
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/no-comparison.md" <<'FIXTURE'
+Fetch both values, then remove the branch — but never compare them:
+
+```bash
+pr_tip=$(gh pr list --json number,state,headRefOid --jq '.[0].headRefOid')
+local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+git branch -D "<branch>"
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/guarded.md" <<'FIXTURE'
+Verify the tip, then remove the branch:
+
+```bash
+pr_tip=$(gh pr list --json state,headRefOid --jq '.[0] | select(.state == "MERGED") | .headRefOid')
+local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+if [ -n "$pr_tip" ] && [ "$pr_tip" = "$local_tip" ]; then
+  git branch -D "<branch>"
+fi
+```
+FIXTURE
+
+cat >"$FIXTURE_DIR/prose-only.md" <<'FIXTURE'
+Skip unmerged orphans — tell the user about `git branch -D` if they want to force.
+
+```bash
+git branch -d "<branch>"
+```
+FIXTURE
+
+check_fixture() {
+  local desc="$1" file="$2" want="$3"
+  if force_delete_guarded "$file"; then
+    got="safe"
+  else
+    got="flagged"
+  fi
+  if [[ "$got" == "$want" ]]; then
+    pass "fixture: $desc -> $got"
+  else
+    fail "fixture: $desc -> $got (expected $want)"
+  fi
+}
+
+check_fixture "bare force-delete" "$FIXTURE_DIR/unguarded.md" flagged
+check_fixture "headRefOid fetched, tip never read" "$FIXTURE_DIR/mentions-only.md" flagged
+check_fixture "both values fetched, never compared" "$FIXTURE_DIR/no-comparison.md" flagged
+check_fixture "tip compared before force-delete" "$FIXTURE_DIR/guarded.md" safe
+check_fixture "force-delete named only in prose" "$FIXTURE_DIR/prose-only.md" safe
+
+# ---------------------------------------------------------------------------
+# Test 17: branch refs are fully qualified where a commit is inspected
+# ---------------------------------------------------------------------------
+
+section "Test 17 — branch refs are qualified against tag shadowing"
+
+# First, demonstrate the hazard on a real repo rather than asserting it, since
+# the whole point is that the bare form looks correct.
+
+# Built once and reused: test.sh is routinely re-run against an existing
+# TARGET_DIR, so the setup has to be safe to skip rather than repeat.
+AMBIG_DIR="${TARGET_DIR}/.test-ambiguous-ref"
+if ! git -C "$AMBIG_DIR" rev-parse --verify --quiet refs/tags/release-1 >/dev/null 2>&1; then
+  mkdir -p "$AMBIG_DIR"
+  git -C "$AMBIG_DIR" init --quiet -b main
+  git -C "$AMBIG_DIR" config user.name "claude-worktree-tools test"
+  git -C "$AMBIG_DIR" config user.email "test@example.invalid"
+  git -C "$AMBIG_DIR" commit -q --allow-empty -m "old commit"
+  # A tag and a branch sharing a name, pointing at different commits.
+  git -C "$AMBIG_DIR" tag release-1
+  git -C "$AMBIG_DIR" checkout -q -b release-1
+  git -C "$AMBIG_DIR" commit -q --allow-empty -m "newer commit, not merged anywhere"
+fi
+AMBIG_OLD="$(git -C "$AMBIG_DIR" rev-parse refs/tags/release-1)"
+AMBIG_NEW="$(git -C "$AMBIG_DIR" rev-parse refs/heads/release-1)"
+
+AMBIG_BARE="$(git -C "$AMBIG_DIR" rev-parse release-1)"
+if [[ "$AMBIG_BARE" == "$AMBIG_OLD" ]]; then
+  pass "bare 'rev-parse <branch>' resolves to the TAG, not the branch"
+else
+  fail "bare 'rev-parse <branch>' resolved to $AMBIG_BARE (expected the tag $AMBIG_OLD)"
+fi
+
+AMBIG_QUAL="$(git -C "$AMBIG_DIR" rev-parse refs/heads/release-1)"
+if [[ "$AMBIG_QUAL" == "$AMBIG_NEW" ]]; then
+  pass "qualified 'rev-parse refs/heads/<branch>' resolves to the branch"
+else
+  fail "qualified rev-parse resolved to $AMBIG_QUAL (expected the branch $AMBIG_NEW)"
+fi
+
+# Given that, a skill must never inspect a branch's commit through a bare name:
+# the tag would satisfy the merge check and the branch would be force-deleted.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$tpl")"
+  # Bare <branch> or origin/<base> as a revision argument to a commit-inspecting
+  # command. `git branch -d/-D` is excluded: it resolves branches only.
+  bare="$(printf '%s\n' "$fenced" |
+    grep -E '(rev-parse|rev-list|merge-base) ' |
+    grep -E '"(origin/)?<(branch|base)>|\.\.<branch>|"origin/<base>\.\.' || true)"
+  if [[ -z "$bare" ]]; then
+    pass "${skill}: branch refs are fully qualified"
+  else
+    fail "${skill}: inspects a commit through an ambiguous ref"
+    printf '%s\n' "$bare" | sed 's/^/        /'
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Test 18: the stale-ref gate precedes the commands it guards
+# ---------------------------------------------------------------------------
+
+section "Test 18 — wt-close gates 4c on the fetch before running it"
+
+# 4a says a failed fetch invalidates 4c and 4d, but that instruction lived only
+# in 4a while 4b told the agent to fall through to 4c regardless — the document
+# contradicted itself and the unsafe reading was the explicitly written one.
+# Stating the gate is not enough; it has to come before the commands it guards,
+# because an agent acts on the first runnable thing it reaches.
+
+WT_CLOSE_TPL="${SCRIPT_DIR}/templates/skills/wt-close/SKILL.md"
+section_4c="$(awk '/^\*\*4c\./ { inside = 1 } /^\*\*4d\./ { inside = 0 } inside' "$WT_CLOSE_TPL")"
+
+if [[ -z "$section_4c" ]]; then
+  fail "wt-close: could not locate section 4c"
+else
+  # `|| true` is load-bearing: under `set -euo pipefail` a grep that matches
+  # nothing fails the whole pipeline and aborts the suite at this assignment.
+  # Without it, a missing gate — the exact thing this test looks for — killed the
+  # run instead of reporting a failure.
+  gate_at="$(printf '%s\n' "$section_4c" | grep -n 'fetch failed' | head -1 | cut -d: -f1 || true)"
+  cmd_at="$(printf '%s\n' "$section_4c" | grep -n '^```' | head -1 | cut -d: -f1 || true)"
+
+  if [[ -z "$gate_at" ]]; then
+    fail "wt-close: section 4c states no fetch-failure gate"
+  elif [[ -z "$cmd_at" ]]; then
+    pass "wt-close: section 4c has a gate and no unguarded commands"
+  elif [[ "$gate_at" -lt "$cmd_at" ]]; then
+    pass "wt-close: 4c's fetch gate precedes its first command (line $gate_at < $cmd_at)"
+  else
+    fail "wt-close: 4c runs a command at line $cmd_at before its gate at line $gate_at"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

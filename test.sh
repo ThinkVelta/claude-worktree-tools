@@ -745,11 +745,19 @@ has_fenced_force_delete() {
   esac
 }
 
+# Both inputs must be fetched AND actually compared, inside a fenced block. An
+# earlier revision only checked that the two strings appeared somewhere in the
+# file, so deleting the comparison and leaving the commands behind kept it green.
+# The equality pattern is structural — any two shell variables tested with `=` —
+# rather than the specific names this skill happens to use.
 force_delete_guarded() {
-  local f="$1"
+  local f="$1" fenced
   has_fenced_force_delete "$f" || return 0
-  grep -qF 'headRefOid' "$f" || return 1
-  grep -qF 'rev-parse "<branch>"' "$f" || return 1
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$f")"
+  printf '%s\n' "$fenced" | grep -qF 'headRefOid' || return 1
+  printf '%s\n' "$fenced" | grep -qF 'rev-parse' || return 1
+  printf '%s\n' "$fenced" |
+    grep -qE '\[ +"\$[A-Za-z_][A-Za-z_0-9]*" *= *"\$[A-Za-z_][A-Za-z_0-9]*" +\]' || return 1
   return 0
 }
 
@@ -785,13 +793,25 @@ git branch -D "<branch>"
 ```
 FIXTURE
 
+cat >"$FIXTURE_DIR/no-comparison.md" <<'FIXTURE'
+Fetch both values, then remove the branch — but never compare them:
+
+```bash
+pr_tip=$(gh pr list --json number,state,headRefOid --jq '.[0].headRefOid')
+local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+git branch -D "<branch>"
+```
+FIXTURE
+
 cat >"$FIXTURE_DIR/guarded.md" <<'FIXTURE'
 Verify the tip, then remove the branch:
 
 ```bash
-gh pr list --json number,state,headRefOid
-git -C "<main-repo-path>" rev-parse "<branch>"
-git branch -D "<branch>"
+pr_tip=$(gh pr list --json state,headRefOid --jq '.[0] | select(.state == "MERGED") | .headRefOid')
+local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+if [ -n "$pr_tip" ] && [ "$pr_tip" = "$local_tip" ]; then
+  git branch -D "<branch>"
+fi
 ```
 FIXTURE
 
@@ -818,7 +838,8 @@ check_fixture() {
 }
 
 check_fixture "bare force-delete" "$FIXTURE_DIR/unguarded.md" flagged
-check_fixture "headRefOid requested but never compared" "$FIXTURE_DIR/mentions-only.md" flagged
+check_fixture "headRefOid fetched, tip never read" "$FIXTURE_DIR/mentions-only.md" flagged
+check_fixture "both values fetched, never compared" "$FIXTURE_DIR/no-comparison.md" flagged
 check_fixture "tip compared before force-delete" "$FIXTURE_DIR/guarded.md" safe
 check_fixture "force-delete named only in prose" "$FIXTURE_DIR/prose-only.md" safe
 

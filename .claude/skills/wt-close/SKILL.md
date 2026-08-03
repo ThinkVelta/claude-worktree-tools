@@ -100,16 +100,25 @@ Interpret the result:
 - An error (`gh` not installed, not authenticated, no GitHub remote) → **not the same as "no PR"**. Say which it was, then fall through to 4c and rely on the local check alone.
 - `state: "MERGED"` → **do not record merged yet.** Verify the tip first, below.
 
-**A merged PR does not prove the branch as it stands now was merged.** It proves the commit GitHub merged was merged. If the branch gained commits afterwards, or the name was reused for new work, those commits are unmerged — and Step 6 would `-D` them out of existence with no warning and no reflog entry the user would think to look for. Compare the merged head against the local tip:
+**A merged PR does not prove the branch as it stands now was merged.** It proves the commit GitHub merged was merged. If the branch gained commits afterwards, or the name was reused for new work, those commits are unmerged — and Step 6 would `-D` them out of existence with no warning and no reflog entry the user would think to look for.
+
+Compare the two, and let the shell do the comparing. Run this as one Bash call, so the variables are assigned and consumed within it:
 
 ```bash
-git -C "<main-repo-path>" rev-parse "<branch>"
+pr_tip=$(gh pr list --head "<branch>" --state all --json state,headRefOid --limit 1 \
+           --jq '.[0] | select(.state == "MERGED") | .headRefOid')
+local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+if [ -n "$pr_tip" ] && [ "$pr_tip" = "$local_tip" ]; then
+  echo "verified-merged"
+else
+  echo "not-verified-merged pr_tip=${pr_tip:-none} local_tip=$local_tip"
+fi
 ```
 
-- Equal to `headRefOid` → the branch is exactly what landed. Record as **merged**.
-- Different → the branch has moved since the PR merged. **Do not record merged.** Fall through to 4c, which tests the current commits rather than the historical ones, and say that the PR merged an older tip.
+- `verified-merged` → the branch is exactly what landed. Record as **merged**.
+- `not-verified-merged` → the branch has moved since the PR merged, or no merged PR exists. **Do not record merged.** Fall through to 4c, which tests the current commits rather than the historical ones, and tell the user the PR merged an older tip.
 
-This is what keeps the `-D` in Step 6 honest: it fires only when the commits about to be deleted are the same commits GitHub confirmed it merged.
+Read the printed verdict rather than comparing two SHAs by eye — a mis-read here force-deletes commits. This is what keeps the `-D` in Step 6 honest: it fires only when the commits about to be deleted are the same commits GitHub confirmed it merged.
 
 **4c. If 4b gave no answer, check merge status against the base branch locally.**
 

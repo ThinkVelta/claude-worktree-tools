@@ -844,6 +844,65 @@ check_fixture "tip compared before force-delete" "$FIXTURE_DIR/guarded.md" safe
 check_fixture "force-delete named only in prose" "$FIXTURE_DIR/prose-only.md" safe
 
 # ---------------------------------------------------------------------------
+# Test 17: branch refs are fully qualified where a commit is inspected
+# ---------------------------------------------------------------------------
+
+section "Test 17 — branch refs are qualified against tag shadowing"
+
+# First, demonstrate the hazard on a real repo rather than asserting it, since
+# the whole point is that the bare form looks correct.
+
+# Built once and reused: test.sh is routinely re-run against an existing
+# TARGET_DIR, so the setup has to be safe to skip rather than repeat.
+AMBIG_DIR="${TARGET_DIR}/.test-ambiguous-ref"
+if ! git -C "$AMBIG_DIR" rev-parse --verify --quiet refs/tags/release-1 >/dev/null 2>&1; then
+  mkdir -p "$AMBIG_DIR"
+  git -C "$AMBIG_DIR" init --quiet -b main
+  git -C "$AMBIG_DIR" config user.name "claude-worktree-tools test"
+  git -C "$AMBIG_DIR" config user.email "test@example.invalid"
+  git -C "$AMBIG_DIR" commit -q --allow-empty -m "old commit"
+  # A tag and a branch sharing a name, pointing at different commits.
+  git -C "$AMBIG_DIR" tag release-1
+  git -C "$AMBIG_DIR" checkout -q -b release-1
+  git -C "$AMBIG_DIR" commit -q --allow-empty -m "newer commit, not merged anywhere"
+fi
+AMBIG_OLD="$(git -C "$AMBIG_DIR" rev-parse refs/tags/release-1)"
+AMBIG_NEW="$(git -C "$AMBIG_DIR" rev-parse refs/heads/release-1)"
+
+AMBIG_BARE="$(git -C "$AMBIG_DIR" rev-parse release-1)"
+if [[ "$AMBIG_BARE" == "$AMBIG_OLD" ]]; then
+  pass "bare 'rev-parse <branch>' resolves to the TAG, not the branch"
+else
+  fail "bare 'rev-parse <branch>' resolved to $AMBIG_BARE (expected the tag $AMBIG_OLD)"
+fi
+
+AMBIG_QUAL="$(git -C "$AMBIG_DIR" rev-parse refs/heads/release-1)"
+if [[ "$AMBIG_QUAL" == "$AMBIG_NEW" ]]; then
+  pass "qualified 'rev-parse refs/heads/<branch>' resolves to the branch"
+else
+  fail "qualified rev-parse resolved to $AMBIG_QUAL (expected the branch $AMBIG_NEW)"
+fi
+
+# Given that, a skill must never inspect a branch's commit through a bare name:
+# the tag would satisfy the merge check and the branch would be force-deleted.
+
+for tpl in "${SCRIPT_DIR}"/templates/skills/*/SKILL.md; do
+  skill="$(basename "$(dirname "$tpl")")"
+  fenced="$(awk '/^```/ { inblock = !inblock; next } inblock' "$tpl")"
+  # Bare <branch> or origin/<base> as a revision argument to a commit-inspecting
+  # command. `git branch -d/-D` is excluded: it resolves branches only.
+  bare="$(printf '%s\n' "$fenced" |
+    grep -E '(rev-parse|rev-list|merge-base) ' |
+    grep -E '"(origin/)?<(branch|base)>|\.\.<branch>|"origin/<base>\.\.' || true)"
+  if [[ -z "$bare" ]]; then
+    pass "${skill}: branch refs are fully qualified"
+  else
+    fail "${skill}: inspects a commit through an ambiguous ref"
+    printf '%s\n' "$bare" | sed 's/^/        /'
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

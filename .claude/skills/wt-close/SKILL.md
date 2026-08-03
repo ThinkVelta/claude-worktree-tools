@@ -107,7 +107,7 @@ Compare the two, and let the shell do the comparing. Run this as one Bash call, 
 ```bash
 pr_tip=$(gh pr list --head "<branch>" --state all --json state,headRefOid --limit 1 \
            --jq '.[0] | select(.state == "MERGED") | .headRefOid')
-local_tip=$(git -C "<main-repo-path>" rev-parse "<branch>")
+local_tip=$(git -C "<main-repo-path>" rev-parse "refs/heads/<branch>")
 if [ -n "$pr_tip" ] && [ "$pr_tip" = "$local_tip" ]; then
   echo "verified-merged"
 else
@@ -119,6 +119,8 @@ fi
 - `not-verified-merged` → the branch has moved since the PR merged, or no merged PR exists. **Do not record merged.** Fall through to 4c, which tests the current commits rather than the historical ones, and tell the user the PR merged an older tip.
 
 Read the printed verdict rather than comparing two SHAs by eye — a mis-read here force-deletes commits. This is what keeps the `-D` in Step 6 honest: it fires only when the commits about to be deleted are the same commits GitHub confirmed it merged.
+
+**Every ref that inspects the branch is fully qualified, here and in 4c and 4d.** `git rev-parse <name>` walks `refs/tags/` *before* `refs/heads/`, so if a tag shares the branch's name the bare form silently resolves to the tag. A tag left on the old merged commit would then match `headRefOid`, print `verified-merged`, and Step 6 would force-delete a branch carrying newer work. `refs/heads/<branch>` and `refs/remotes/origin/<base>` cannot be captured that way. Keep them qualified even though it reads more verbosely.
 
 **4c. If 4b gave no answer, check merge status against the base branch locally.**
 
@@ -133,7 +135,7 @@ If that prints nothing, the clone has no recorded default branch. Try `gh repo v
 Then, substituting the resolved base:
 
 ```bash
-git -C "<main-repo-path>" rev-list --count "origin/<base>..<branch>"
+git -C "<main-repo-path>" rev-list --count "refs/remotes/origin/<base>..refs/heads/<branch>"
 ```
 
 - Count `0` → branch fully merged into base. Record as **merged**.
@@ -144,7 +146,7 @@ git -C "<main-repo-path>" rev-list --count "origin/<base>..<branch>"
 
 ```bash
 git -C "<main-repo-path>" show-ref --verify --quiet "refs/remotes/origin/<branch>" && \
-  git -C "<main-repo-path>" rev-list --count "origin/<branch>..<branch>"
+  git -C "<main-repo-path>" rev-list --count "refs/remotes/origin/<branch>..refs/heads/<branch>"
 ```
 
 If `refs/remotes/origin/<branch>` does not exist (typical after merge + auto-delete), do NOT invent a number — say "remote branch no longer exists" instead.

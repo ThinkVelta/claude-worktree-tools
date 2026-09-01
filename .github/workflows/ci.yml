@@ -40,7 +40,7 @@ jobs:
       # Provisions uv and node from .mise.toml, so CI runs the exact tool
       # versions pinned for dev machines.
       - name: Install pinned tools
-        uses: jdx/mise-action@v4.2.4
+        uses: jdx/mise-action@v4.2.5
         with:
           install: true
           cache: true

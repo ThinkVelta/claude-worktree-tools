@@ -99,7 +99,7 @@ runs:
     # specific model id, and an unavailable pin fails the job with no review at
     # all. Pin them once a run has confirmed the entitlement.
     - id: codex
-      uses: openai/codex-action@v1
+      uses: openai/codex-action@v1.12 # pinned: v1.13 restricts /run sockets with setfacl, which fails on GitHub-hosted runners
       with:
         openai-api-key: ${{ inputs.openai-api-key }}
         prompt: |
